@@ -66,6 +66,14 @@ services:
       - content-service
     restart: unless-stopped
 
+  # --- TAMBAHAN BARU: Assessment Service ---
+  assessment-service:
+    build:
+      context: ./assessment-service
+    container_name: lms-assessment-service
+    ports:
+      - "8002:8002"
+    restart: unless-stopped
 
 # Mendefinisikan nama volume untuk menyimpan data secara permanen
 volumes:
