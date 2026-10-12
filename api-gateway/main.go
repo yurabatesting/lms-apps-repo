@@ -62,6 +62,9 @@ func main() {
 	// Rute untuk Assessment Service
 	r.Any("/api/assessment/*path", proxy("http://assessment-service:8002"))
 
+	// Rute untuk Leaderboard Service
+	r.Any("/api/leaderboard/*path", proxy("http://leaderboard-service:8003"))
+
 	log.Println("API Gateway berjalan di port 8080...")
 	r.Run(":8080")
 }

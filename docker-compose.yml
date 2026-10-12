@@ -79,6 +79,22 @@ services:
       - "8002"
     restart: unless-stopped
 
+  # --- TAMBAHAN BARU: Leaderboard Service ---
+  leaderboard-service:
+    build:
+      context: ./leaderboard-service
+    container_name: lms-leaderboard-service
+    environment:
+      # Variabel ini mengarahkan koneksi ke nama container Redis Anda
+      - REDIS_HOST=lms-redis
+      - REDIS_PORT=6379
+    expose:
+      - "8003"
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+
 # Mendefinisikan nama volume untuk menyimpan data secara permanen
 volumes:
   pgdata:
