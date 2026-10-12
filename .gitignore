@@ -1,0 +1,14 @@
+# Sistem Operasi (Mac)
+.DS_Store
+
+# Lingkungan Python (Auth, Content, Assessment)
+venv/
+env/
+__pycache__/
+*.pyc
+
+# Lingkungan Node.js (Jika nanti dipakai)
+node_modules/
+
+# Rahasia & Konfigurasi
+.env

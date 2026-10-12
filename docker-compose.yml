@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  # 1. PostgreSQL untuk Relational Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: lms-postgres
+    environment:
+      POSTGRES_USER: lms_admin
+      POSTGRES_PASSWORD: secretpassword
+      # Saat container pertama kali dibuat, ia akan mengeksekusi file di dalam docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432" # Mapping port Macbook (kiri) ke port Container (kanan)
+    volumes:
+      - pgdata:/var/lib/postgresql/data # Agar data tidak hilang saat container mati (Persistence)
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql # Menyuntikkan script init.sql
+    restart: unless-stopped
+
+  # 2. Redis untuk In-Memory Cache & Leaderboard
+  redis:
+    image: redis:7-alpine
+    container_name: lms-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    restart: unless-stopped
+
+  # --- TAMBAHAN BARU: Auth Service ---
+  auth-service:
+    build: 
+      context: ./auth-service # Docker akan nge-build dari folder ini
+    container_name: lms-auth-service
+    ports:
+      - "8000:8000" # Port FastAPI
+    environment:
+      # Variabel untuk koneksi database
+      - DATABASE_URL=postgresql://lms_admin:secretpassword@postgres:5432/auth_db
+    depends_on:
+      - postgres # Tunggu database nyala dulu sebelum Auth Service jalan
+    restart: unless-stopped
+
+# Mendefinisikan nama volume untuk menyimpan data secara permanen
+volumes:
+  pgdata:
+  redisdata:
