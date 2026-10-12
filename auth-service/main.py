@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
+from fastapi.middleware.cors import CORSMiddleware # Tambahan baru
 
 import models, schemas, crud, security
 from database import engine, get_db
@@ -8,6 +9,16 @@ from database import engine, get_db
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="LMS Auth Service", version="1.0.0")
+
+# --- TAMBAHAN BARU: Konfigurasi CORS ---
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # Mengizinkan request dari semua domain/port (untuk development)
+    allow_credentials=True,
+    allow_methods=["*"], # Mengizinkan semua method (GET, POST, dll)
+    allow_headers=["*"], # Mengizinkan semua header
+)
+# --------------------------------------
 
 @app.get("/")
 def health_check():
