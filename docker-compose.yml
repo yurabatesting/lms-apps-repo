@@ -95,6 +95,32 @@ services:
     restart: unless-stopped
 
 
+  # --- TAMBAHAN BARU: FE Main ---
+  fe-main:
+    build:
+      context: ./fe-main
+    container_name: lms-fe-main
+    expose:
+      - "80" # Port disembunyikan, hanya melayani nginx-router
+    restart: unless-stopped
+
+  # --- TAMBAHAN BARU: NGINX Router ---
+  nginx-router:
+    build: ./nginx-router
+    container_name: lms-nginx-router
+    ports:
+      - "80:80"
+    depends_on:
+      - fe-main
+      - api-gateway
+    restart: unless-stopped
+
+
+
+
+
+
+
 # Mendefinisikan nama volume untuk menyimpan data secara permanen
 volumes:
   pgdata:

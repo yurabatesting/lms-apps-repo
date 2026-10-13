@@ -12,3 +12,28 @@ node_modules/
 
 # Rahasia & Konfigurasi
 .env
+
+
+# --- TAMBAHAN BARU ---
+
+# Hasil Build Frontend (React/Vite)
+dist/
+dist-ssr/
+build/
+
+# Log Error Node.js/NPM
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Konfigurasi Code Editor (VSCode / IntelliJ)
+.vscode/
+.idea/
+*.suo
+*.njsproj
+
+# File Sistem Operasi Tambahan
+Thumbs.db
+.AppleDouble
+.LSOverride
