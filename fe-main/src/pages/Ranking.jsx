@@ -12,7 +12,8 @@ export default function Rangking() {
   useEffect(() => {
     const fetchLeaderboard = async () => {
       try {
-        const response = await fetch('/api/assessment/scores');
+        // MENGUBAH RUTE: Kini menembak ke API Gateway -> leaderboard-service (Redis)
+        const response = await fetch('/api/leaderboard/top?limit=20');
         const data = await response.json();
         
         if (response.ok) {

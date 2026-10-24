@@ -90,6 +90,7 @@ services:
       # Variabel ini mengarahkan koneksi ke nama container Redis Anda
       - REDIS_HOST=lms-redis
       - REDIS_PORT=6379
+      - SECRET_KEY=super_secret_key_lms
     expose:
       - "8003"
     depends_on:
