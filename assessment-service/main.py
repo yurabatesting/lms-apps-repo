@@ -180,3 +180,25 @@ def get_leaderboard(db: Session = Depends(get_db)):
         })
         
     return {"status": "success", "data": result}
+
+
+# --- Endpoint Riwayat Nilai Pribadi (Untuk Grafik Dashboard) ---
+@app.get("/scores/history")
+def get_my_score_history(db: Session = Depends(get_db), current_user: dict = Depends(verify_token)):
+    # 1. Ambil username dari token JWT yang sedang login
+    username = current_user.get("sub")
+    
+    # 2. Cari semua nilai milik username tersebut, urutkan dari waktu terlama ke terbaru (asc)
+    history = db.query(ScoreDB).filter(ScoreDB.username == username).order_by(ScoreDB.created_at.asc()).all()
+    
+    result = []
+    for s in history:
+        result.append({
+            "id": s.id,
+            "quiz_title": s.quiz_title,
+            "score": s.score,
+            # Kita format waktunya di backend agar frontend (React) tinggal menampilkannya saja
+            "date": s.created_at.strftime("%d %b %Y, %H:%M") 
+        })
+        
+    return {"status": "success", "data": result}
