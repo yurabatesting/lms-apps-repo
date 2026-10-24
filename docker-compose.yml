@@ -54,6 +54,8 @@ services:
       - SECRET_KEY=super_secret_key_lms # TAMBAHKAN INI
     depends_on:
       - postgres
+    volumes: # <--- TAMBAHKAN BLOK INI
+      - ./uploads:/app/uploads
     restart: unless-stopped
 
   # --- TAMBAHAN BARU: API Gateway ---
