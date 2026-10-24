@@ -19,3 +19,11 @@ def create_user(db: Session, user: schemas.UserCreate):
 
 def get_all_users(db: Session):
     return db.query(models.User).all()
+
+def delete_user(db: Session, user_id: int):
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if user:
+        db.delete(user)
+        db.commit()
+        return True
+    return False

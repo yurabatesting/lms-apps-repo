@@ -202,3 +202,11 @@ def get_my_score_history(db: Session = Depends(get_db), current_user: dict = Dep
         })
         
     return {"status": "success", "data": result}
+
+# --- Endpoint Hapus Riwayat Nilai (Hanya Admin) ---
+@app.delete("/scores/user/{username}")
+def delete_user_scores(username: str, db: Session = Depends(get_db), current_user: dict = Depends(verify_admin)):
+    # Hapus semua skor yang memiliki username terkait
+    deleted_count = db.query(ScoreDB).filter(ScoreDB.username == username).delete()
+    db.commit()
+    return {"status": "success", "message": f"{deleted_count} riwayat nilai milik {username} telah dihapus"}

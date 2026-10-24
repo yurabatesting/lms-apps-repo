@@ -72,3 +72,18 @@ def create_user_admin(user: schemas.UserCreate, db: Session = Depends(get_db), a
     if db_user:
         raise HTTPException(status_code=400, detail="Username sudah terdaftar")
     return crud.create_user(db=db, user=user)
+
+
+@app.delete("/users/{user_id}")
+def delete_user_admin(user_id: int, db: Session = Depends(get_db), admin_user: dict = Depends(security.require_admin)):
+    """Menghapus pengguna berdasarkan ID (Hanya Admin)"""
+    user_to_delete = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user_to_delete:
+        raise HTTPException(status_code=404, detail="User tidak ditemukan")
+    
+    # Keamanan ekstra: Cegah admin menghapus dirinya sendiri
+    if user_to_delete.username == admin_user.get("username"):
+        raise HTTPException(status_code=400, detail="Tidak dapat menghapus akun Anda sendiri yang sedang aktif")
+
+    crud.delete_user(db, user_id)
+    return {"status": "success", "message": f"User {user_to_delete.username} berhasil dihapus dari sistem"}

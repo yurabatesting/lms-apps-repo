@@ -140,6 +140,39 @@ export default function Dashboard() {
       setUserActionStatus({ loading: false, message: 'Terjadi kesalahan jaringan.', type: 'error' });
     }
   };
+
+  const handleDeleteUser = async (userId, username) => {
+    // Konfirmasi ganda untuk mencegah salah hapus
+    if (!window.confirm(`⚠️ PERINGATAN!\nYakin ingin menghapus akun '${username}'?\nSeluruh riwayat nilainya juga akan musnah permanen!`)) {
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      
+      // 1. Hapus nilai dari Assessment Service terlebih dahulu
+      await fetch(`/api/assessment/scores/user/${username}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      // 2. Hapus akun dari Auth Service
+      const response = await fetch(`/api/auth/users/${userId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (response.ok) {
+        alert(`Sukses: User '${username}' dan riwayatnya telah dihapus.`);
+        fetchUsers(); // Segarkan tabel secara otomatis
+      } else {
+        const data = await response.json();
+        alert(`Gagal menghapus akun: ${data.detail}`);
+      }
+    } catch (err) {
+      alert('Terjadi kesalahan jaringan saat mencoba menghapus user.');
+    }
+  };
   // --------------------------------------------
 
   const handleLogout = () => {
@@ -322,6 +355,7 @@ export default function Dashboard() {
                         <th className="p-3 font-semibold w-16 text-center">ID</th>
                         <th className="p-3 font-semibold">Username</th>
                         <th className="p-3 font-semibold text-center">Tipe Role</th>
+                        <th className="p-3 font-semibold text-center">Aksi</th> {/* KOLOM BARU */}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-sm">
@@ -333,6 +367,15 @@ export default function Dashboard() {
                             <span className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase ${user.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
                               {user.role}
                             </span>
+                          </td>
+                          <td className="p-3 text-center">
+                            {/* TOMBOL HAPUS BARU */}
+                            <button 
+                              onClick={() => handleDeleteUser(user.id, user.username)}
+                              className="text-red-500 hover:text-white border border-red-500 hover:bg-red-600 px-3 py-1 rounded transition-colors text-xs font-bold"
+                            >
+                              HAPUS
+                            </button>
                           </td>
                         </tr>
                       ))}
