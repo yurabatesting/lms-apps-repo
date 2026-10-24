@@ -6,6 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware # Tambahan baru
 import models, schemas, crud, security
 from database import engine, get_db
 
+from typing import List
+
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="LMS Auth Service", version="1.0.0")
@@ -30,7 +32,9 @@ def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
     db_user = crud.get_user_by_username(db, username=user.username)
     if db_user:
         raise HTTPException(status_code=400, detail="Username sudah terdaftar")
-    # Jika belum ada, buat user baru
+    
+    # KEAMANAN EKSTRA: Paksa role menjadi 'siswa' jika mendaftar dari jalur publik
+    user.role = "siswa"
     return crud.create_user(db=db, user=user)
 
 @app.post("/login", response_model=schemas.Token)
@@ -51,3 +55,20 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
         data={"sub": user.username, "role": user.role}
     )
     return {"access_token": access_token, "token_type": "bearer"}
+
+# ==========================================
+# RUTE KHUSUS ADMIN
+# ==========================================
+
+@app.get("/users", response_model=List[schemas.UserResponse])
+def get_all_users_admin(db: Session = Depends(get_db), admin_user: dict = Depends(security.require_admin)):
+    """Mengambil daftar semua pengguna (Hanya Admin)"""
+    return crud.get_all_users(db)
+
+@app.post("/users", response_model=schemas.UserResponse)
+def create_user_admin(user: schemas.UserCreate, db: Session = Depends(get_db), admin_user: dict = Depends(security.require_admin)):
+    """Membuat pengguna baru dengan role bebas (Hanya Admin)"""
+    db_user = crud.get_user_by_username(db, username=user.username)
+    if db_user:
+        raise HTTPException(status_code=400, detail="Username sudah terdaftar")
+    return crud.create_user(db=db, user=user)
