@@ -19,19 +19,31 @@ function AssessmentHome() {
       return;
     } 
     setIsAuthenticated(true);
-    fetchQuizSetsFromDB(token);
+
+    // --- TAMBAHAN BARU: Membaca course_id dari URL Query Parameters ---
+    const params = new URLSearchParams(window.location.search);
+    const courseId = params.get('course_id');
+
+    // UBAH BARIS INI: Tambahkan courseId di sebelahnya
+    fetchQuizSetsFromDB(token, courseId);
   }, []);
 
-  const fetchQuizSetsFromDB = async (token) => {
+  const fetchQuizSetsFromDB = async (token, courseId) => {
     try {
-      const response = await fetch('/api/assessment/questions', {
+      // Gunakan URL Path Parameter jika courseId tersedia
+      let url = '/api/assessment/questions';
+      if (courseId) {
+        url = `/api/assessment/questions/course/${courseId}`;
+      }
+
+      const response = await fetch(url, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       });
-      
+
       if (response.ok) {
         const result = await response.json();
         setQuizSets(result.data || []);

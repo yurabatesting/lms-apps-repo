@@ -13,6 +13,7 @@ export default function Dashboard() {
   // State untuk Kelola Soal
   const [jsonFile, setJsonFile] = useState(null);
   const [quizTitle, setQuizTitle] = useState('');
+  const [uploadCourseId, setUploadCourseId] = useState(''); // <--- STATE BARU
   const [uploadStatus, setUploadStatus] = useState({ loading: false, message: '', type: '' });
 
   // State untuk Riwayat
@@ -229,15 +230,19 @@ export default function Dashboard() {
   // -------------------------------------------
 
   const handleUploadJson = async () => {
-    if (!quizTitle.trim() || !jsonFile) {
-      setUploadStatus({ loading: false, message: 'Judul dan File JSON wajib diisi.', type: 'error' });
+    if (!quizTitle.trim() || !jsonFile || !uploadCourseId) {
+      setUploadStatus({ loading: false, message: 'Pilih Course, isi Judul, dan pilih File JSON.', type: 'error' });
       return;
     }
     setUploadStatus({ loading: true, message: 'Memproses...', type: 'info' });
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
-        const finalPayload = { title: quizTitle, questions: JSON.parse(e.target.result) };
+        const finalPayload = { 
+          title: quizTitle, 
+          course_id: parseInt(uploadCourseId), // <--- TAMBAHAN BARU
+          questions: JSON.parse(e.target.result) 
+        };
         const token = localStorage.getItem('token');
         const response = await fetch('/api/assessment/questions', {
           method: 'POST',
@@ -246,7 +251,7 @@ export default function Dashboard() {
         });
         if (response.ok) {
           setUploadStatus({ loading: false, message: 'Soal berhasil diunggah!', type: 'success' });
-          setJsonFile(null); setQuizTitle('');
+          setJsonFile(null); setQuizTitle(''); setUploadCourseId('');
         } else {
           setUploadStatus({ loading: false, message: 'Gagal mengunggah.', type: 'error' });
         }
@@ -341,7 +346,7 @@ export default function Dashboard() {
                     </div>
 
                     <div className="mt-auto pt-4 border-t border-gray-100">
-                      <a href="/assessment/" className="block text-center bg-green-50 text-green-700 font-bold py-2.5 rounded-lg hover:bg-green-100 transition-colors w-full">
+                      <a href={`/assessment/?course_id=${materi.id}`} className="block text-center bg-green-50 text-green-700 font-bold py-2.5 rounded-lg hover:bg-green-100 transition-colors w-full">
                         Kerjakan Ujian
                       </a>
                     </div>
@@ -476,15 +481,35 @@ export default function Dashboard() {
         {activeTab === 'upload' && userRole === 'admin' && (
           <div className="bg-white rounded-xl p-8 shadow-sm border border-gray-100 max-w-2xl">
             <h2 className="text-2xl font-bold text-gray-800 mb-6">Tambah Kumpulan Soal Baru</h2>
+            
+            {/* TAMBAHAN BARU: Dropdown Pilih Course */}
+            <div className="mb-4">
+              <label className="block text-gray-700 font-medium mb-2">Untuk Mata Pelajaran (Course):</label>
+              <select value={uploadCourseId} onChange={(e) => setUploadCourseId(e.target.value)} className="w-full border rounded-lg p-2.5 bg-gray-50 focus:border-blue-500 outline-none" required>
+                <option value="">-- Pilih Mata Pelajaran --</option>
+                {materiList.map(course => (
+                  <option key={course.id} value={course.id}>{course.title}</option>
+                ))}
+              </select>
+            </div>
+
             <div className="mb-4">
               <label className="block text-gray-700 font-medium mb-2">Judul Kumpulan Soal:</label>
-              <input type="text" value={quizTitle} onChange={(e) => setQuizTitle(e.target.value)} className="w-full border rounded-lg p-3 bg-gray-50" />
+              <input type="text" value={quizTitle} onChange={(e) => setQuizTitle(e.target.value)} className="w-full border rounded-lg p-3 bg-gray-50 focus:border-blue-500 outline-none" placeholder="Contoh: Kuis Bab 1" />
             </div>
+            
             <div className="mb-6">
               <label className="block text-gray-700 font-medium mb-2">Pilih file JSON:</label>
               <input type="file" accept=".json" onChange={(e) => setJsonFile(e.target.files[0])} className="w-full border rounded-lg p-2 bg-gray-50" />
             </div>
-            <button onClick={handleUploadJson} className="w-full py-3 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700">Upload & Simpan Soal</button>
+            
+            <button onClick={handleUploadJson} className="w-full py-3 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition">Upload & Simpan Soal</button>
+            
+            {uploadStatus.message && (
+              <div className={`mt-6 p-4 rounded-lg font-medium border ${uploadStatus.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                {uploadStatus.message}
+              </div>
+            )}
           </div>
         )}
       </main>

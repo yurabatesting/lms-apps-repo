@@ -3,13 +3,11 @@ import jwt
 from fastapi import FastAPI, Depends, HTTPException, Security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
-from typing import List
-# TAMBAHAN: Mengimpor Float untuk menyimpan nilai desimal
+from typing import List, Optional
 from sqlalchemy import create_engine, Column, Integer, String, Text, JSON, ForeignKey, DateTime, Float
 from sqlalchemy.orm import declarative_base, sessionmaker, Session, relationship
 from datetime import datetime
 
-# --- KONFIGURASI DATABASE & AUTH ---
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg2://lms_admin:secretpassword@postgres:5432/assessment_db")
 SECRET_KEY = os.getenv("SECRET_KEY", "super_secret_key_lms")
 ALGORITHM = "HS256"
@@ -18,11 +16,11 @@ engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# --- SKEMA DATABASE (RELASIONAL) ---
 class QuizSetDB(Base):
     __tablename__ = "quiz_sets"
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, index=True)
+    course_id = Column(Integer, nullable=True) # <--- TAMBAHAN BARU
     created_at = Column(DateTime, default=datetime.utcnow)
     
     questions = relationship("QuestionDB", back_populates="quiz_set", cascade="all, delete-orphan")
@@ -41,13 +39,12 @@ class QuestionDB(Base):
 
     quiz_set = relationship("QuizSetDB", back_populates="questions")
 
-# TAMBAHAN BARU: Tabel Papan Skor
 class ScoreDB(Base):
     __tablename__ = "scores"
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, index=True)
     quiz_title = Column(String)
-    score = Column(Float) # Menyimpan nilai persentase (misal: 80.0)
+    score = Column(Float) 
     correct_count = Column(Integer)
     total_questions = Column(Integer)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -57,7 +54,6 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(title="Assessment Service")
 security = HTTPBearer()
 
-# --- MODEL VALIDASI JSON ---
 class QuestionTemplate(BaseModel):
     id: int 
     topic: str
@@ -69,16 +65,15 @@ class QuestionTemplate(BaseModel):
 
 class QuizUploadPayload(BaseModel):
     title: str
+    course_id: int # <--- TAMBAHAN BARU
     questions: List[QuestionTemplate]
 
-# TAMBAHAN BARU: Payload Pengiriman Skor
 class ScoreSubmitPayload(BaseModel):
     quiz_title: str
     score: float
     correct_count: int
     total_questions: int
 
-# --- DEPENDENCIES ---
 def get_db():
     db = SessionLocal()
     try:
@@ -101,14 +96,14 @@ def verify_admin(current_user: dict = Depends(verify_token)):
         raise HTTPException(status_code=403, detail="Akses ditolak")
     return current_user
 
-# --- ROUTES ---
 @app.get("/")
 def health_check():
     return {"status": "success", "message": "Assessment Service Running!"}
 
 @app.post("/questions")
 def upload_questions(payload: QuizUploadPayload, db: Session = Depends(get_db), current_user: dict = Depends(verify_admin)):
-    new_quiz_set = QuizSetDB(title=payload.title)
+    # Simpan course_id ke database
+    new_quiz_set = QuizSetDB(title=payload.title, course_id=payload.course_id)
     db.add(new_quiz_set)
     db.commit()
     db.refresh(new_quiz_set) 
@@ -131,82 +126,68 @@ def upload_questions(payload: QuizUploadPayload, db: Session = Depends(get_db), 
     db.commit()
     return {"status": "success", "message": f"{added_count} soal berhasil disimpan dalam bundel '{payload.title}'"}
 
+# --- ENDPOINT GET DIPERBARUI UNTUK MENERIMA FILTER course_id ---
 @app.get("/questions")
-def get_all_questions(db: Session = Depends(get_db), current_user: dict = Depends(verify_token)):
-    quiz_sets = db.query(QuizSetDB).all()
+def get_all_questions(course_id: Optional[int] = None, db: Session = Depends(get_db), current_user: dict = Depends(verify_token)):
+    query = db.query(QuizSetDB)
+    
+    # Jika frontend mengirim course_id di URL, saring datanya
+    if course_id is not None:
+        query = query.filter(QuizSetDB.course_id == course_id)
+        
+    quiz_sets = query.all()
     result = []
     
     for qs in quiz_sets:
         result.append({
             "id": qs.id,
             "title": qs.title,
+            "course_id": qs.course_id,
             "questions": qs.questions
         })
         
     return {"status": "success", "data": result}
 
-# --- TAMBAHAN BARU: Endpoint Penyimpanan & Papan Skor ---
-# Butuh login (verify_token) untuk menyimpan skor
 @app.post("/scores")
 def submit_score(payload: ScoreSubmitPayload, db: Session = Depends(get_db), current_user: dict = Depends(verify_token)):
     username = current_user.get("sub", "Anonymous")
-    
-    new_score = ScoreDB(
-        username=username,
-        quiz_title=payload.quiz_title,
-        score=payload.score,
-        correct_count=payload.correct_count,
-        total_questions=payload.total_questions
-    )
+    new_score = ScoreDB(username=username, quiz_title=payload.quiz_title, score=payload.score, correct_count=payload.correct_count, total_questions=payload.total_questions)
     db.add(new_score)
     db.commit()
     return {"status": "success", "message": "Skor berhasil disimpan!"}
 
-# Bersifat Publik (TIDAK ADA verify_token)
 @app.get("/scores")
 def get_leaderboard(db: Session = Depends(get_db)):
     scores = db.query(ScoreDB).order_by(ScoreDB.score.desc()).limit(20).all()
-    
-    result = []
-    for s in scores:
-        result.append({
-            "id": s.id,
-            "username": s.username,
-            "quiz_title": s.quiz_title,
-            "score": s.score,
-            "correct_count": s.correct_count,
-            "total_questions": s.total_questions,
-            "created_at": s.created_at
-        })
-        
+    result = [{"id": s.id, "username": s.username, "quiz_title": s.quiz_title, "score": s.score, "correct_count": s.correct_count, "total_questions": s.total_questions, "created_at": s.created_at} for s in scores]
     return {"status": "success", "data": result}
 
-
-# --- Endpoint Riwayat Nilai Pribadi (Untuk Grafik Dashboard) ---
 @app.get("/scores/history")
 def get_my_score_history(db: Session = Depends(get_db), current_user: dict = Depends(verify_token)):
-    # 1. Ambil username dari token JWT yang sedang login
     username = current_user.get("sub")
-    
-    # 2. Cari semua nilai milik username tersebut, urutkan dari waktu terlama ke terbaru (asc)
     history = db.query(ScoreDB).filter(ScoreDB.username == username).order_by(ScoreDB.created_at.asc()).all()
-    
-    result = []
-    for s in history:
-        result.append({
-            "id": s.id,
-            "quiz_title": s.quiz_title,
-            "score": s.score,
-            # Kita format waktunya di backend agar frontend (React) tinggal menampilkannya saja
-            "date": s.created_at.strftime("%d %b %Y, %H:%M") 
-        })
-        
+    result = [{"id": s.id, "quiz_title": s.quiz_title, "score": s.score, "date": s.created_at.strftime("%d %b %Y, %H:%M")} for s in history]
     return {"status": "success", "data": result}
 
-# --- Endpoint Hapus Riwayat Nilai (Hanya Admin) ---
 @app.delete("/scores/user/{username}")
 def delete_user_scores(username: str, db: Session = Depends(get_db), current_user: dict = Depends(verify_admin)):
-    # Hapus semua skor yang memiliki username terkait
     deleted_count = db.query(ScoreDB).filter(ScoreDB.username == username).delete()
     db.commit()
     return {"status": "success", "message": f"{deleted_count} riwayat nilai milik {username} telah dihapus"}
+
+# --- ENDPOINT BARU: Path Parameter anti-potong API Gateway ---
+@app.get("/questions/course/{course_id}")
+def get_questions_by_course(course_id: int, db: Session = Depends(get_db), current_user: dict = Depends(verify_token)):
+    # Langsung filter secara tegas berdasarkan course_id
+    quiz_sets = db.query(QuizSetDB).filter(QuizSetDB.course_id == course_id).all()
+
+    result = []
+    for qs in quiz_sets:
+        result.append({
+            "id": qs.id,
+            "title": qs.title,
+            "course_id": qs.course_id,
+            "questions": qs.questions
+        })
+
+    return {"status": "success", "data": result}
