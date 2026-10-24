@@ -36,6 +36,7 @@ services:
     environment:
       # Variabel untuk koneksi database
       - DATABASE_URL=postgresql://lms_admin:secretpassword@postgres:5432/auth_db
+      - SECRET_KEY=super_secret_key_lms # <-- TAMBAHKAN BARIS INI
     depends_on:
       - postgres # Tunggu database nyala dulu sebelum Auth Service jalan
     restart: unless-stopped
@@ -50,6 +51,7 @@ services:
     environment:
       # Terhubung ke content_db
       - DATABASE_URL=postgresql://lms_admin:secretpassword@postgres:5432/content_db
+      - SECRET_KEY=super_secret_key_lms # TAMBAHKAN INI
     depends_on:
       - postgres
     restart: unless-stopped
@@ -95,15 +97,6 @@ services:
     restart: unless-stopped
 
 
-  # --- TAMBAHAN BARU: FE Main ---
-  fe-main:
-    build:
-      context: ./fe-main
-    container_name: lms-fe-main
-    expose:
-      - "80" # Port disembunyikan, hanya melayani nginx-router
-    restart: unless-stopped
-
   # --- TAMBAHAN BARU: NGINX Router ---
   nginx-router:
     build: ./nginx-router
@@ -115,6 +108,21 @@ services:
       - api-gateway
     restart: unless-stopped
 
+  # --- TAMBAHAN BARU: FE Main ---
+  fe-main:
+    build:
+      context: ./fe-main
+    container_name: lms-fe-main
+    expose:
+      - "80" # Port disembunyikan, hanya melayani nginx-router
+    restart: unless-stopped
+
+  # --- TAMBAHAN BARU: FE Assessment ---
+  fe-assessment:
+      build:
+        context: ./fe-assessment
+      container_name: lms-fe-assessment
+      restart: unless-stopped
 
 
 

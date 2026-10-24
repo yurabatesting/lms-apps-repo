@@ -1,11 +1,12 @@
+import os
 from datetime import datetime, timedelta
 from passlib.context import CryptContext
 from jose import jwt
 
-# Kunci rahasia untuk menandatangani JWT (Di tahap DevOps nanti, ini akan dimasukkan ke Secret Manager/Env Vars)
-SECRET_KEY = "rahasia_super_kuat_untuk_dummy_lms"
+# MENGGUNAKAN os.getenv AGAR MEMBACA DARI DOCKER
+SECRET_KEY = os.getenv("SECRET_KEY", "super_secret_key_lms")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 # Token kedaluwarsa dalam 1 jam
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -19,6 +20,5 @@ def create_access_token(data: dict):
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
-    # Membuat token JWT yang digabungkan dengan SECRET_KEY
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
