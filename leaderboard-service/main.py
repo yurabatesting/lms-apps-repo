@@ -60,3 +60,21 @@ def submit_score(data: ScoreData, current_user: dict = Depends(verify_token)):
     member_id = f"{data.username}::{data.quiz_title}"
     r.zadd("leaderboard", {member_id: data.score})
     return {"status": "success", "message": "Skor live berhasil diperbarui!"}
+
+@app.delete("/scores/user/{username}")
+def delete_user_from_leaderboard(username: str, current_user: dict = Depends(verify_token)):
+    # Keamanan: Pastikan hanya admin yang bisa melakukan sapu bersih ini
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Hanya Admin yang dapat menghapus data leaderboard")
+
+    # Ambil semua member di dalam Sorted Set "leaderboard"
+    members = r.zrange("leaderboard", 0, -1)
+    deleted_count = 0
+    
+    for member in members:
+        # Cari member yang berawalan "username::"
+        if member.startswith(f"{username}::"):
+            r.zrem("leaderboard", member)
+            deleted_count += 1
+            
+    return {"status": "success", "message": f"{deleted_count} rekaman Redis milik {username} dihapus."}

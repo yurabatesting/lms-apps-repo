@@ -156,6 +156,12 @@ export default function Dashboard() {
         headers: { 'Authorization': `Bearer ${token}` }
       });
 
+      // 2. Hapus nilai dari Leaderboard Service (Redis) <--- TAMBAHAN BARU
+      await fetch(`/api/leaderboard/scores/user/${username}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
       // 2. Hapus akun dari Auth Service
       const response = await fetch(`/api/auth/users/${userId}`, {
         method: 'DELETE',
