@@ -17,8 +17,10 @@ def create_user(db: Session, user: schemas.UserCreate):
     db.refresh(db_user)
     return db_user
 
-def get_all_users(db: Session):
-    return db.query(models.User).all()
+# Ubah fungsi ini:
+def get_all_users(db: Session, skip: int = 0, limit: int = 50):
+    # Hanya ambil data sesuai limit (default 50)
+    return db.query(models.User).offset(skip).limit(limit).all()
 
 def delete_user(db: Session, user_id: int):
     user = db.query(models.User).filter(models.User.id == user_id).first()

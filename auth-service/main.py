@@ -6,7 +6,7 @@ from sqlalchemy.sql import text # Tambahkan import ini di bagian atas
 from fastapi.middleware.cors import CORSMiddleware # Tambahan baru
 
 import models, schemas, crud, security
-from database import engine, get_db
+from database import engine, get_db, SessionLocal # <-- Tambahkan SessionLocal
 
 from typing import List
 
@@ -73,9 +73,14 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 # ==========================================
 
 @app.get("/users", response_model=List[schemas.UserResponse])
-def get_all_users_admin(db: Session = Depends(get_db), admin_user: dict = Depends(security.require_admin)):
-    """Mengambil daftar semua pengguna (Hanya Admin)"""
-    return crud.get_all_users(db)
+def get_all_users_admin(
+    skip: int = 0, 
+    limit: int = 50, 
+    db: Session = Depends(get_db), 
+    admin_user: dict = Depends(security.require_admin)
+):
+    """Mengambil daftar pengguna dengan paginasi (Hanya Admin)"""
+    return crud.get_all_users(db, skip=skip, limit=limit)
 
 @app.post("/users", response_model=schemas.UserResponse)
 def create_user_admin(user: schemas.UserCreate, db: Session = Depends(get_db), admin_user: dict = Depends(security.require_admin)):
@@ -99,3 +104,28 @@ def delete_user_admin(user_id: int, db: Session = Depends(get_db), admin_user: d
 
     crud.delete_user(db, user_id)
     return {"status": "success", "message": f"User {user_to_delete.username} berhasil dihapus dari sistem"}
+
+@app.on_event("startup")
+def startup_event():
+    """Skrip ini hanya berjalan 1x setiap kali kontainer dinyalakan"""
+    admin_user = os.environ.get("FIRST_ADMIN_USER")
+    admin_pass = os.environ.get("FIRST_ADMIN_PASS")
+    
+    # Jika env variables untuk admin pertama tersedia
+    if admin_user and admin_pass:
+        db = SessionLocal() 
+        try:
+            existing_admin = crud.get_user_by_username(db, username=admin_user)
+            if not existing_admin:
+                print(f"⚙️ Membangun akun Admin pertama: {admin_user}...", flush=True)
+                new_admin = schemas.UserCreate(
+                    username=admin_user, 
+                    password=admin_pass, 
+                    role="admin"
+                )
+                crud.create_user(db, new_admin)
+                print("✅ Akun Admin berhasil dibuat!", flush=True)
+            else:
+                print(f"✅ Akun Admin '{admin_user}' sudah tersedia di sistem. Melewati proses bootstrap.", flush=True)
+        finally:
+            db.close()
