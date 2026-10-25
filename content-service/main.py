@@ -3,6 +3,8 @@ import shutil
 import uuid
 from fastapi import FastAPI, Depends, HTTPException, File, UploadFile, Form
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from security import get_current_user
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -28,9 +30,9 @@ else:
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# Membuat endpoint agar file PDF bisa diakses langsung via URL
-app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
-# ----------------------------------------------
+# # Membuat endpoint agar file PDF bisa diakses langsung via URL
+# app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+# # ----------------------------------------------
 
 @app.get("/")
 def health_check():
@@ -73,9 +75,33 @@ def create_material_for_course(
         
         # 3. Simpan URL path-nya ke database
         # URL ini akan merujuk ke API Gateway -> Content Service -> /uploads/
-        final_content = f"/api/content/uploads/{unique_filename}"
+        final_content = f"/api/content/download/{unique_filename}"
     
     # Bungkus kembali menjadi format schema
     material_data = schemas.MaterialCreate(title=title, content=final_content)
     
     return crud.create_material(db=db, material=material_data, course_id=course_id)
+
+# --- ENDPOINT UNDUH DOKUMEN MATERI ---
+@app.get("/download/{filename}")
+async def download_secure_file(
+    filename: str, 
+    current_user: dict = Depends(get_current_user) # <-- Kunci utamanya di sini
+):
+    """
+    Endpoint aman untuk mengunduh file. 
+    Hanya bisa diakses jika menyertakan Token JWT yang valid.
+    """
+    # Untuk saat ini masih mengarah ke folder lokal (akan diubah ke GCS di Langkah 5)
+    file_path = f"uploads/{filename}"
+    
+    # Cek apakah file benar-benar ada di server
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File PDF tidak ditemukan")
+        
+    # Kembalikan file ke client
+    return FileResponse(
+        path=file_path, 
+        media_type='application/pdf', 
+        filename=filename
+    )

@@ -43,3 +43,6 @@ kode-aplikasi-saya.txt
 
 # Environments
 .env
+
+# Folder Upload 
+upload/
