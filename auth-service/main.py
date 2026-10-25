@@ -1,6 +1,8 @@
+import os # Pastikan os sudah di-import di bagian atas
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
+from sqlalchemy.sql import text # Tambahkan import ini di bagian atas
 from fastapi.middleware.cors import CORSMiddleware # Tambahan baru
 
 import models, schemas, crud, security
@@ -12,19 +14,29 @@ models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="LMS Auth Service", version="1.0.0")
 
+
+# Membaca ALLOWED_ORIGINS dari env, fallback ke localhost demi keamanan
+allowed_origins_str = os.environ.get("ALLOWED_ORIGINS", "http://localhost")
+origins = allowed_origins_str.split(",")
 # --- TAMBAHAN BARU: Konfigurasi CORS ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Mengizinkan request dari semua domain/port (untuk development)
+    allow_origins=origins, # <-- Kini aman dan bersifat dinamis
     allow_credentials=True,
-    allow_methods=["*"], # Mengizinkan semua method (GET, POST, dll)
-    allow_headers=["*"], # Mengizinkan semua header
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 # --------------------------------------
 
 @app.get("/")
-def health_check():
-    return {"status": "success", "service": "auth-service"}
+def health_check(db: Session = Depends(get_db)):
+    try:
+        # Melakukan ping ringan ke database
+        db.execute(text("SELECT 1"))
+        return {"status": "success", "service": "auth-service", "database": "connected"}
+    except Exception as e:
+        # Jika database terputus, lempar HTTP 500 agar GKE me-restart container
+        raise HTTPException(status_code=500, detail="Database connection failed")
 
 @app.post("/register", response_model=schemas.UserResponse)
 def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
