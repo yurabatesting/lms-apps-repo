@@ -1,10 +1,13 @@
-import os  # INI YANG HILANG!
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+import os 
+from fastapi import Depends, HTTPException, status, Security
+from fastapi.security import OAuth2PasswordBearer, HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 
 # PENTING: Secret Key dan Algorithm HARUS SAMA PERSIS dengan yang ada di Auth Service
-SECRET_KEY = os.getenv("SECRET_KEY", "super_secret_key_lms")
+SECRET_KEY = os.environ.get("SECRET_KEY")
+if not SECRET_KEY:
+    raise ValueError("FATAL ERROR: SECRET_KEY belum di-set di environment content-service!")
+
 ALGORITHM = "HS256"
 
 # Memberitahu Swagger UI di mana tempat mengambil token (meskipun beda service)

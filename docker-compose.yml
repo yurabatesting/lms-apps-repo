@@ -51,11 +51,12 @@ services:
       context: ./content-service
     container_name: lms-content-service
     ports:
-      - "8001:8001" # Service ini jalan di port 8001 MacBook Anda
+      - "8001" # Service ini jalan di port 8001 MacBook Anda
     environment:
       # Terhubung ke content_db
-      - DATABASE_URL=postgresql://lms_admin:secretpassword@postgres:5432/content_db
-      - SECRET_KEY=super_secret_key_lms # TAMBAHKAN INI
+      - DATABASE_URL=${CONTENT_DB_URL}
+      - SECRET_KEY=${SECRET_KEY}
+      - ENVIRONMENT=${ENVIRONMENT}
     depends_on:
       - postgres
     volumes: # <--- TAMBAHKAN BLOK INI

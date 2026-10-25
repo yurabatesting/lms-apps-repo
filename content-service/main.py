@@ -9,9 +9,20 @@ from typing import List
 import models, schemas, crud, security
 from database import engine, get_db
 
-models.Base.metadata.create_all(bind=engine)
+# Cek apakah ini lingkungan development
+is_dev = os.environ.get("ENVIRONMENT") == "development"
 
-app = FastAPI(title="LMS Content Service", version="1.0.0")
+app = FastAPI(title="LMS Content Service", 
+              version="1.0.0",
+              docs_url="/docs" if is_dev else None,
+              redoc_url="/redoc" if is_dev else None)
+
+# --- LANGKAH 2: Sabuk Pengaman Database ---
+if is_dev:
+    print("⚙️ Mode DEVELOPMENT: Membuat tabel database otomatis...", flush=True)
+    models.Base.metadata.create_all(bind=engine)
+else:
+    print("🛡️ Mode PRODUCTION: Eksekusi create_all dilewati.", flush=True)
 
 # --- TAMBAHAN BARU: Menyiapkan Folder Upload ---
 UPLOAD_DIR = "uploads"
