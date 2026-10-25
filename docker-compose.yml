@@ -40,6 +40,7 @@ services:
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
       - FIRST_ADMIN_USER=${FIRST_ADMIN_USER} # <-- TAMBAHKAN INI
       - FIRST_ADMIN_PASS=${FIRST_ADMIN_PASS} # <-- TAMBAHKAN INI
+      - ENVIRONMENT=${ENVIRONMENT} # <-- TAMBAHKAN INI
     depends_on:
       - postgres # Tunggu database nyala dulu sebelum Auth Service jalan
     restart: unless-stopped

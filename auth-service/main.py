@@ -10,7 +10,13 @@ from database import engine, get_db, SessionLocal # <-- Tambahkan SessionLocal
 
 from typing import List
 
-models.Base.metadata.create_all(bind=engine)
+# --- Sabuk Pengaman Database ---
+# Hanya eksekusi pembuatan tabel otomatis jika berada di lingkungan lokal
+if os.environ.get("ENVIRONMENT") == "development":
+    print("⚙️ Mode DEVELOPMENT: Membuat tabel database otomatis jika belum ada...", flush=True)
+    models.Base.metadata.create_all(bind=engine)
+else:
+    print("🛡️ Mode PRODUCTION: Eksekusi create_all dilewati untuk mencegah schema drift.", flush=True)
 
 app = FastAPI(title="LMS Auth Service", version="1.0.0")
 
