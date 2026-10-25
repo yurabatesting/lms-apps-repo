@@ -6,9 +6,10 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 
 # MENGGUNAKAN os.getenv AGAR MEMBACA DARI DOCKER
-SECRET_KEY = os.getenv("SECRET_KEY", "super_secret_key_lms")
+SECRET_KEY = os.environ["SECRET_KEY"]
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 
+# Mengambil nilai kedaluwarsa dari env, jika tidak ada gunakan default 60 menit
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 

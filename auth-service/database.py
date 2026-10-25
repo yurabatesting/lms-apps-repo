@@ -3,11 +3,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
 # Mengambil variabel environment DATABASE_URL dari docker-compose
-# Jika tidak ada (misal run lokal tanpa docker), gunakan URL default
-SQLALCHEMY_DATABASE_URL = os.getenv(
-    "DATABASE_URL", 
-    "postgresql://lms_admin:secretpassword@localhost:5432/auth_db"
-)
+# MENGUBAH GETENV MENJADI ENVIRON (Fail-Fast Mechanism)
+# Aplikasi akan crash jika DATABASE_URL tidak disuntikkan oleh GCP/Docker
+SQLALCHEMY_DATABASE_URL = os.environ["DATABASE_URL"]
 
 # Membuat 'engine' yang mengatur koneksi ke database
 engine = create_engine(SQLALCHEMY_DATABASE_URL)

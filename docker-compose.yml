@@ -32,11 +32,12 @@ services:
       context: ./auth-service # Docker akan nge-build dari folder ini
     container_name: lms-auth-service
     ports:
-      - "8000:8000" # Port FastAPI
+      - "8000" # Port FastAPI
     environment:
       # Variabel untuk koneksi database
-      - DATABASE_URL=postgresql://lms_admin:secretpassword@postgres:5432/auth_db
-      - SECRET_KEY=super_secret_key_lms # <-- TAMBAHKAN BARIS INI
+      - DATABASE_URL=${AUTH_DB_URL}
+      - SECRET_KEY=${SECRET_KEY}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
     depends_on:
       - postgres # Tunggu database nyala dulu sebelum Auth Service jalan
     restart: unless-stopped
