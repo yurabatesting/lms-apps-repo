@@ -40,3 +40,6 @@ Thumbs.db
 
 
 kode-aplikasi-saya.txt
+
+# Environments
+.env
