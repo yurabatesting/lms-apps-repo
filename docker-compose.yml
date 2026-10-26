@@ -57,6 +57,7 @@ services:
       - DATABASE_URL=${CONTENT_DB_URL}
       - SECRET_KEY=${SECRET_KEY}
       - ENVIRONMENT=${ENVIRONMENT}
+      - STORAGE_MODE=${STORAGE_MODE}
     depends_on:
       - postgres
     volumes: # <--- TAMBAHKAN BLOK INI
