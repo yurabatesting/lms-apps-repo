@@ -63,18 +63,29 @@ def create_material_for_course(
     final_content = content_text
 
     # Jika Admin mengunggah file PDF
+    # Jika Admin mengunggah file PDF
     if file:
-        # 1. Bikin nama file unik agar tidak bentrok (misal: 550e8400...pdf)
-        file_extension = file.filename.split(".")[-1]
-        unique_filename = f"{uuid.uuid4()}.{file_extension}"
+        # --- 1. VALIDASI LAPIS PERTAMA: MIME Type ---
+        if file.content_type != "application/pdf":
+            raise HTTPException(status_code=400, detail="Tipe file ditolak. Hanya menerima PDF.")
+            
+        # --- 2. VALIDASI LAPIS KEDUA: Magic Bytes ---
+        # Membaca 5 byte pertama untuk memastikan struktur asli file adalah PDF
+        file_header = file.file.read(5)
+        if file_header != b"%PDF-":
+            raise HTTPException(status_code=400, detail="Isi file palsu terdeteksi (spoofing ekstensi).")
+            
+        # Kembalikan 'kursor' pembacaan file ke titik 0 agar file tidak rusak saat disimpan
+        file.file.seek(0)
+        
+        # --- 3. PROSES PENYIMPANAN NORMAL ---
+        unique_filename = f"{uuid.uuid4()}.pdf" # Langsung tembak .pdf karena sudah tervalidasi
         file_path = os.path.join(UPLOAD_DIR, unique_filename)
         
-        # 2. Simpan file secara fisik ke folder lokal
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         
-        # 3. Simpan URL path-nya ke database
-        # URL ini akan merujuk ke API Gateway -> Content Service -> /uploads/
+        # URL ini akan merujuk ke API Gateway -> Content Service -> /download/
         final_content = f"/api/content/download/{unique_filename}"
     
     # Bungkus kembali menjadi format schema
