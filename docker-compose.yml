@@ -82,9 +82,9 @@ services:
       context: ./assessment-service
     container_name: lms-assessment-service
     environment:
-      - DATABASE_URL=postgresql+psycopg2://lms_admin:secretpassword@postgres:5432/assessment_db
-      - SECRET_KEY=super_secret_key_lms # Samakan dengan Auth Service
-    # HAPUS 'ports: - "8002:8002"' dan ganti menjadi expose
+      - DATABASE_URL=${ASSESSMENT_DB_URL} 
+      - SECRET_KEY=${SECRET_KEY}
+      - ENVIRONMENT=${ENVIRONMENT}
     expose:
       - "8002"
     restart: unless-stopped

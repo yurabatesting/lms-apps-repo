@@ -3,14 +3,18 @@ import jwt
 from fastapi import FastAPI, Depends, HTTPException, Security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict
 from sqlalchemy import create_engine, Column, Integer, String, Text, JSON, ForeignKey, DateTime, Float
 from sqlalchemy.orm import declarative_base, sessionmaker, Session, relationship
 from datetime import datetime
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg2://lms_admin:secretpassword@postgres:5432/assessment_db")
-SECRET_KEY = os.getenv("SECRET_KEY", "super_secret_key_lms")
+# --- 1. FAIL-FAST ENVIRONMENT VARIABLES ---
+# Menggunakan os.environ agar aplikasi langsung crash jika variabel ini tidak ada di .env
+DATABASE_URL = os.environ["DATABASE_URL"]
+SECRET_KEY = os.environ["SECRET_KEY"]
 ALGORITHM = "HS256"
+
+is_dev = os.environ.get("ENVIRONMENT") == "development"
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -49,9 +53,20 @@ class ScoreDB(Base):
     total_questions = Column(Integer)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-Base.metadata.create_all(bind=engine)
+# --- 2. SABUK PENGAMAN DATABASE ---
+if is_dev:
+    print("⚙️ Mode DEVELOPMENT: Membuat tabel database otomatis...", flush=True)
+    Base.metadata.create_all(bind=engine)
+else:
+    print("🛡️ Mode PRODUCTION: Eksekusi create_all dilewati.", flush=True)
 
-app = FastAPI(title="Assessment Service")
+# --- 3. SABUK PENGAMAN SWAGGER UI ---
+app = FastAPI(
+    title="Assessment Service",
+    docs_url="/docs" if is_dev else None,
+    redoc_url="/redoc" if is_dev else None
+)
+
 security = HTTPBearer()
 
 class QuestionTemplate(BaseModel):
@@ -69,10 +84,8 @@ class QuizUploadPayload(BaseModel):
     questions: List[QuestionTemplate]
 
 class ScoreSubmitPayload(BaseModel):
-    quiz_title: str
-    score: float
-    correct_count: int
-    total_questions: int
+    quiz_set_id: int
+    answers: Dict[str, str]  # Format: {"id_soal": "jawaban_user", "1": "Jakarta"}
 
 def get_db():
     db = SessionLocal()
@@ -130,8 +143,6 @@ def upload_questions(payload: QuizUploadPayload, db: Session = Depends(get_db), 
 @app.get("/questions")
 def get_all_questions(course_id: Optional[int] = None, db: Session = Depends(get_db), current_user: dict = Depends(verify_token)):
     query = db.query(QuizSetDB)
-    
-    # Jika frontend mengirim course_id di URL, saring datanya
     if course_id is not None:
         query = query.filter(QuizSetDB.course_id == course_id)
         
@@ -139,11 +150,24 @@ def get_all_questions(course_id: Optional[int] = None, db: Session = Depends(get
     result = []
     
     for qs in quiz_sets:
+        # FILTERING: Buat daftar soal baru tanpa kolom answer & explanation
+        safe_questions = []
+        for q in qs.questions:
+            safe_questions.append({
+                "id": q.id,
+                "no_soal": q.no_soal,
+                "topic": q.topic,
+                "kategori": q.kategori,
+                "question": q.question,
+                "options": q.options
+                # PERHATIKAN: 'answer' dan 'explanation' tidak dimasukkan ke sini!
+            })
+
         result.append({
             "id": qs.id,
             "title": qs.title,
             "course_id": qs.course_id,
-            "questions": qs.questions
+            "questions": safe_questions
         })
         
     return {"status": "success", "data": result}
@@ -151,10 +175,63 @@ def get_all_questions(course_id: Optional[int] = None, db: Session = Depends(get
 @app.post("/scores")
 def submit_score(payload: ScoreSubmitPayload, db: Session = Depends(get_db), current_user: dict = Depends(verify_token)):
     username = current_user.get("sub", "Anonymous")
-    new_score = ScoreDB(username=username, quiz_title=payload.quiz_title, score=payload.score, correct_count=payload.correct_count, total_questions=payload.total_questions)
+    
+    quiz_set = db.query(QuizSetDB).filter(QuizSetDB.id == payload.quiz_set_id).first()
+    if not quiz_set:
+        raise HTTPException(status_code=404, detail="Kuis tidak ditemukan")
+        
+    questions = db.query(QuestionDB).filter(QuestionDB.quiz_set_id == payload.quiz_set_id).all()
+    if not questions:
+        raise HTTPException(status_code=400, detail="Kuis belum memiliki soal untuk dinilai")
+
+    total_questions = len(questions)
+    correct_count = 0
+    
+    # TAMBAHAN: Array untuk menampung rapor evaluasi per soal
+    review_data = [] 
+    
+    for q in questions:
+        user_answer = payload.answers.get(str(q.id))
+        is_correct = (user_answer == q.answer)
+        
+        if is_correct:
+            correct_count += 1
+            
+        # Catat detail evaluasi untuk dikembalikan ke frontend di akhir ujian
+        review_data.append({
+            "question_id": q.id,
+            "question": q.question,
+            "user_answer": user_answer,
+            "correct_answer": q.answer,
+            "is_correct": is_correct,
+            "explanation": q.explanation
+        })
+            
+    final_score = (correct_count / total_questions) * 100.0
+    
+    new_score = ScoreDB(
+        username=username, 
+        quiz_title=quiz_set.title, 
+        score=final_score, 
+        correct_count=correct_count, 
+        total_questions=total_questions
+    )
     db.add(new_score)
     db.commit()
-    return {"status": "success", "message": "Skor berhasil disimpan!"}
+    db.refresh(new_score)
+    
+    # Kembalikan Rapor Hasil Ujian beserta detail pembahasannya
+    return {
+        "status": "success", 
+        "message": "Ujian selesai diperiksa!",
+        "data": {
+            "quiz_title": quiz_set.title,
+            "score": final_score,
+            "correct_count": correct_count,
+            "total_questions": total_questions,
+            "review": review_data  # <--- Kunci jawaban baru turun di sini
+        }
+    }
 
 @app.get("/scores")
 def get_leaderboard(db: Session = Depends(get_db)):
@@ -178,16 +255,27 @@ def delete_user_scores(username: str, db: Session = Depends(get_db), current_use
 # --- ENDPOINT BARU: Path Parameter anti-potong API Gateway ---
 @app.get("/questions/course/{course_id}")
 def get_questions_by_course(course_id: int, db: Session = Depends(get_db), current_user: dict = Depends(verify_token)):
-    # Langsung filter secara tegas berdasarkan course_id
     quiz_sets = db.query(QuizSetDB).filter(QuizSetDB.course_id == course_id).all()
 
     result = []
     for qs in quiz_sets:
+        # FILTERING: Buat daftar soal baru tanpa kolom answer & explanation
+        safe_questions = []
+        for q in qs.questions:
+            safe_questions.append({
+                "id": q.id,
+                "no_soal": q.no_soal,
+                "topic": q.topic,
+                "kategori": q.kategori,
+                "question": q.question,
+                "options": q.options
+            })
+
         result.append({
             "id": qs.id,
             "title": qs.title,
             "course_id": qs.course_id,
-            "questions": qs.questions
+            "questions": safe_questions
         })
 
     return {"status": "success", "data": result}
