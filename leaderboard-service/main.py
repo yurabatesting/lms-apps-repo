@@ -15,7 +15,9 @@ REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 # --- TAMBAHAN BARU: Membaca Password Redis dari Environment ---
 # Nilai default adalah None, sehingga aman untuk development lokal
-REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", None)
+raw_password = os.getenv("REDIS_PASSWORD")
+# Cek jika string kosong/spasi, paksa ubah menjadi None
+REDIS_PASSWORD = raw_password if raw_password and raw_password.strip() else None
 
 # Inisialisasi koneksi Redis dengan injeksi password dinamis
 r = redis.Redis(
@@ -68,7 +70,7 @@ def get_top_scores(limit: int = 20, quiz_title: str = None):
             "quiz_title": player_quiz_title,
             "score": int(player[1])
         })
-        return {"status": "success", "data": result}
+    return {"status": "success", "data": result}
 
 @app.post("/scores")
 def submit_score(data: ScoreData, is_internal: bool = Depends(verify_internal_service)):
