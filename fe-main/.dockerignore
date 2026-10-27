@@ -1,0 +1,19 @@
+# Mengabaikan dependensi lokal
+node_modules/
+npm-debug.log
+
+# Mengabaikan hasil build lokal
+dist/
+build/
+
+# Mengabaikan file sistem macOS/Windows
+.DS_Store
+Thumbs.db
+
+# Mengabaikan file env lokal (keamanan)
+.env
+.env.local
+
+# Mengabaikan riwayat Git
+.git/
+.gitignore
