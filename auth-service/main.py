@@ -1,12 +1,11 @@
-import os # Pastikan os sudah di-import di bagian atas
+import os 
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-from sqlalchemy.sql import text # Tambahkan import ini di bagian atas
-from fastapi.middleware.cors import CORSMiddleware # Tambahan baru
+from sqlalchemy.sql import text 
 
 import models, schemas, crud, security
-from database import engine, get_db, SessionLocal # <-- Tambahkan SessionLocal
+from database import engine, get_db, SessionLocal 
 
 from typing import List
 
@@ -20,19 +19,9 @@ else:
 
 app = FastAPI(title="LMS Auth Service", version="1.0.0")
 
-
-# Membaca ALLOWED_ORIGINS dari env, fallback ke localhost demi keamanan
-allowed_origins_str = os.environ.get("ALLOWED_ORIGINS", "http://localhost")
-origins = allowed_origins_str.split(",")
-# --- TAMBAHAN BARU: Konfigurasi CORS ---
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins, # <-- Kini aman dan bersifat dinamis
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-# --------------------------------------
+# ==========================================
+# BLOK CORS TELAH DIHAPUS DARI SINI
+# ==========================================
 
 @app.get("/")
 def health_check(db: Session = Depends(get_db)):
