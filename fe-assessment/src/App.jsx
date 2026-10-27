@@ -10,6 +10,7 @@ function AssessmentHome() {
   
   const [answers, setAnswers] = useState({});
   const [score, setScore] = useState({ percentage: 0, correct: 0 });
+  const [reviewData, setReviewData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -66,7 +67,7 @@ function AssessmentHome() {
     setAnswers(prev => ({ ...prev, [questionId]: option }));
   };
 
-  // --- FUNGSI SUBMIT DIPERBARUI UNTUK PENGIRIMAN GANDA ---
+  // --- FUNGSI SUBMIT (Menunggu Hasil dari Backend) ---
   const handleSubmit = async () => {
     const activeQuiz = quizSets[activeQuizIndex];
     const activeQuestions = activeQuiz.questions;
@@ -76,59 +77,30 @@ function AssessmentHome() {
       if (!confirmSubmit) return; 
     }
 
-    let correctCount = 0;
-    activeQuestions.forEach(q => {
-      if (answers[q.id] === q.answer) correctCount++;
-    });
-    
-    const calculatedScore = (correctCount / activeQuestions.length) * 100;
-    
-    setScore({
-      percentage: calculatedScore,
-      correct: correctCount
-    });
-
     try {
       const token = localStorage.getItem('token');
       
-      // Ekstrak username dari token JWT untuk dikirim ke Redis
-      const getUsernameFromToken = (t) => {
-        try { return JSON.parse(atob(t.split('.')[1])).sub; } 
-        catch (e) { return "Anonymous"; }
-      };
-      const currentUsername = getUsernameFromToken(token);
-
-      // 1. Request ke PostgreSQL (Arsip Permanen)
-      const postToPostgres = fetch('/api/assessment/scores', {
+      const response = await fetch('/api/assessment/scores', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          quiz_title: activeQuiz.title || `Kumpulan Soal #${activeQuiz.id}`,
-          score: calculatedScore,
-          correct_count: correctCount,
-          total_questions: activeQuestions.length
+          quiz_set_id: activeQuiz.id,
+          answers: answers
         })
       });
 
-      // 2. Request ke Redis (Leaderboard Live)
-      const postToRedis = fetch('/api/leaderboard/scores', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          username: currentUsername,
-          score: Math.round(calculatedScore),
-          quiz_title: activeQuiz.title || `Kumpulan Soal #${activeQuiz.id}` // <-- TAMBAHKAN BARIS INI
-        })
-      });
-
-      // Eksekusi kedua request secara paralel (bersamaan) agar lebih cepat
-      await Promise.all([postToPostgres, postToRedis]);
+      if (response.ok) {
+        const result = await response.json();
+        // Gunakan skor dan review dari BACKEND, bukan hitung lokal
+        setScore({
+          percentage: result.data.score,
+          correct: result.data.correct_count
+        });
+        setReviewData(result.data.review);
+      }
 
     } catch (error) {
       console.error("Gagal menyimpan skor:", error);
@@ -249,25 +221,25 @@ function AssessmentHome() {
           <h2 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">🔍 Review Detail Jawaban Anda:</h2>
           
           <div className="space-y-8">
-            {activeQuestions.map((q, index) => {
-              const userAnswer = answers[q.id];
-              const isCorrect = userAnswer === q.answer;
+            {reviewData.map((item, index) => {
+              const userAnswer = item.user_answer;
+              const isCorrect = item.is_correct;
 
               return (
-                <div key={q.id} className="bg-white p-8 rounded-xl shadow-sm border border-gray-200">
+                <div key={item.question_id} className="bg-white p-8 rounded-xl shadow-sm border border-gray-200">
                   <p className="text-gray-800 text-lg mb-4">
-                    <span className="font-bold">Soal {index + 1}:</span> <span dangerouslySetInnerHTML={{ __html: q.question }} />
+                    <span className="font-bold">Soal {index + 1}:</span> <span dangerouslySetInnerHTML={{ __html: item.question }} />
                   </p>
                   <div className={`p-4 rounded-lg mb-3 font-medium ${isCorrect ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
                     Jawaban Anda: {userAnswer || "(Tidak dijawab)"} {isCorrect ? ' (Benar ✔️)' : ' (Salah ❌)'}
                   </div>
                   {!isCorrect && (
                     <div className="p-4 rounded-lg mb-3 font-medium bg-yellow-50 text-yellow-800 border border-yellow-200">
-                      Jawaban yang benar: {q.answer}
+                      Jawaban yang benar: {item.correct_answer}
                     </div>
                   )}
                   <div className="p-4 rounded-lg bg-blue-50 text-blue-800 border border-blue-100 mt-4 leading-relaxed">
-                    <b>Pembahasan:</b> {q.explanation}
+                    <b>Pembahasan:</b> {item.explanation}
                   </div>
                 </div>
               );
