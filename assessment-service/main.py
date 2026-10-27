@@ -1,6 +1,7 @@
 import os
 import jwt
-from fastapi import FastAPI, Depends, HTTPException, Security
+import requests
+from fastapi import FastAPI, Depends, HTTPException, Security, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from typing import List, Optional, Dict
@@ -173,7 +174,7 @@ def get_all_questions(course_id: Optional[int] = None, db: Session = Depends(get
     return {"status": "success", "data": result}
 
 @app.post("/scores")
-def submit_score(payload: ScoreSubmitPayload, db: Session = Depends(get_db), current_user: dict = Depends(verify_token)):
+def submit_score(request: Request, payload: ScoreSubmitPayload, db: Session = Depends(get_db), current_user: dict = Depends(verify_token)):
     username = current_user.get("sub", "Anonymous")
     
     quiz_set = db.query(QuizSetDB).filter(QuizSetDB.id == payload.quiz_set_id).first()
@@ -186,8 +187,6 @@ def submit_score(payload: ScoreSubmitPayload, db: Session = Depends(get_db), cur
 
     total_questions = len(questions)
     correct_count = 0
-    
-    # TAMBAHAN: Array untuk menampung rapor evaluasi per soal
     review_data = [] 
     
     for q in questions:
@@ -197,7 +196,6 @@ def submit_score(payload: ScoreSubmitPayload, db: Session = Depends(get_db), cur
         if is_correct:
             correct_count += 1
             
-        # Catat detail evaluasi untuk dikembalikan ke frontend di akhir ujian
         review_data.append({
             "question_id": q.id,
             "question": q.question,
@@ -219,8 +217,31 @@ def submit_score(payload: ScoreSubmitPayload, db: Session = Depends(get_db), cur
     db.add(new_score)
     db.commit()
     db.refresh(new_score)
+
+    # =================================================================
+    # SERVER-TO-SERVER COMMUNICATION (Mencegah Dual-Write di Frontend)
+    # =================================================================
+    # 1. Tangkap token JWT mentah dari request header
+    auth_header = request.headers.get("Authorization")
     
-    # Kembalikan Rapor Hasil Ujian beserta detail pembahasannya
+    if auth_header:
+        try:
+            # 2. Tembak Leaderboard Service melalui DNS internal Docker
+            # 3. Graceful Degradation: Timeout maksimal 2 detik agar tidak hang
+            requests.post(
+                "http://leaderboard-service:8003/scores",
+                json={
+                    "username": username,
+                    "score": int(final_score),
+                    "quiz_title": quiz_set.title
+                },
+                headers={"Authorization": auth_header},
+                timeout=2.0
+            )
+        except requests.exceptions.RequestException as e:
+            # Jika Redis/Leaderboard mati, catat log tapi JANGAN gagalkan ujian user!
+            print(f"⚠️ Peringatan: Gagal mengirim skor ke Leaderboard: {e}", flush=True)
+
     return {
         "status": "success", 
         "message": "Ujian selesai diperiksa!",
@@ -229,7 +250,7 @@ def submit_score(payload: ScoreSubmitPayload, db: Session = Depends(get_db), cur
             "score": final_score,
             "correct_count": correct_count,
             "total_questions": total_questions,
-            "review": review_data  # <--- Kunci jawaban baru turun di sini
+            "review": review_data
         }
     }
 
@@ -279,3 +300,46 @@ def get_questions_by_course(course_id: int, db: Session = Depends(get_db), curre
         })
 
     return {"status": "success", "data": result}
+
+# --- ENDPOINT BARU: ALAT SINKRONISASI ADMIN (OPSI 1) ---
+@app.post("/sync-leaderboard")
+def sync_leaderboard(request: Request, db: Session = Depends(get_db), admin_user: dict = Depends(verify_admin)):
+    """
+    Endpoint pemulihan: Mengambil semua data dari PostgreSQL 
+    dan menyuntikkannya kembali ke Redis (Leaderboard Service).
+    Hanya bisa diakses oleh Admin.
+    """
+    scores = db.query(ScoreDB).all()
+    auth_header = request.headers.get("Authorization")
+    
+    success_count = 0
+    failed_count = 0
+    
+    for s in scores:
+        try:
+            res = requests.post(
+                "http://leaderboard-service:8003/scores",
+                json={
+                    "username": s.username,
+                    "score": int(s.score),
+                    "quiz_title": s.quiz_title
+                },
+                headers={"Authorization": auth_header},
+                timeout=1.0 # Timeout sangat singkat per request
+            )
+            if res.status_code == 200:
+                success_count += 1
+            else:
+                failed_count += 1
+        except requests.exceptions.RequestException:
+            failed_count += 1
+            
+    return {
+        "status": "success",
+        "message": "Operasi sinkronisasi selesai",
+        "data": {
+            "total_data_postgres": len(scores),
+            "berhasil_dikirim": success_count,
+            "gagal_dikirim": failed_count
+        }
+    }
