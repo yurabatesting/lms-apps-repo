@@ -235,12 +235,15 @@ def submit_score(request: Request, payload: ScoreSubmitPayload, db: Session = De
                     "score": int(final_score),
                     "quiz_title": quiz_set.title
                 },
-                headers={"Authorization": auth_header},
+                headers={
+                    "Authorization": auth_header, 
+                    "X-Internal-Token": SECRET_KEY  # <--- Menggunakan Variabel Env yang sudah ada
+                },
                 timeout=2.0
             )
         except requests.exceptions.RequestException as e:
             # Jika Redis/Leaderboard mati, catat log tapi JANGAN gagalkan ujian user!
-            print(f"⚠️ Peringatan: Gagal mengirim skor ke Leaderboard: {e}", flush=True)
+            print(f"🚨 ALERT: Leaderboard Service tidak dapat dihubungi! ({e})", flush=True)
 
     return {
         "status": "success", 
@@ -324,7 +327,10 @@ def sync_leaderboard(request: Request, db: Session = Depends(get_db), admin_user
                     "score": int(s.score),
                     "quiz_title": s.quiz_title
                 },
-                headers={"Authorization": auth_header},
+                headers={
+                    "Authorization": auth_header,
+                    "X-Internal-Token": SECRET_KEY # <--- Tambahkan juga di sini
+                },
                 timeout=1.0 # Timeout sangat singkat per request
             )
             if res.status_code == 200:
