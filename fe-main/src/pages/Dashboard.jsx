@@ -328,17 +328,27 @@ export default function Dashboard() {
                       {materi.materials && materi.materials.length > 0 ? (
                         <div className="mb-4 space-y-2">
                           <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Daftar File PDF:</h4>
-                          {materi.materials.map((mat) => (
-                            <a 
-                              key={mat.id} 
-                              href={mat.content} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="block p-2 bg-blue-50 text-blue-700 text-sm font-medium rounded hover:bg-blue-100 transition truncate border border-blue-100"
-                            >
-                              📄 {mat.title}
-                            </a>
-                          ))}
+                          {materi.materials.map((mat) => {
+                            // AMBIL TOKEN DARI LOCAL STORAGE
+                            const currentToken = localStorage.getItem('token');
+                            
+                            // TEMPELKAN TOKEN KE URL JIKA MERUPAKAN LINK DOWNLOAD INTERNAL
+                            const fileUrl = mat.content.includes('/api/content/download') 
+                              ? `${mat.content}?token=${currentToken}` 
+                              : mat.content;
+
+                            return (
+                              <a 
+                                key={mat.id} 
+                                href={fileUrl} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="block p-2 bg-blue-50 text-blue-700 text-sm font-medium rounded hover:bg-blue-100 transition truncate border border-blue-100"
+                              >
+                                📄 {mat.title}
+                              </a>
+                            );
+                          })}
                         </div>
                       ) : (
                          <p className="text-sm text-gray-400 italic mb-4">Belum ada file PDF.</p>
