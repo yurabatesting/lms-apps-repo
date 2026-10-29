@@ -17,6 +17,7 @@ ALGORITHM = "HS256"
 
 # AMAN: Gunakan nilai dinamis untuk GCP/GKE, dan nilai default untuk Docker lokal
 LEADERBOARD_SERVICE_URL = os.environ.get("LEADERBOARD_SERVICE_URL", "http://leaderboard-service:8003")
+INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "kunci_rahasia_internal_default")
 
 is_dev = os.environ.get("ENVIRONMENT") == "development"
 
@@ -240,7 +241,7 @@ def submit_score(request: Request, payload: ScoreSubmitPayload, db: Session = De
                 },
                 headers={
                     "Authorization": auth_header, 
-                    "X-Internal-Token": SECRET_KEY  # <--- Menggunakan Variabel Env yang sudah ada
+                    "X-Internal-Token": INTERNAL_API_KEY  # <--- Menggunakan Variabel Env yang sudah ada
                 },
                 timeout=2.0
             )
@@ -332,7 +333,7 @@ def sync_leaderboard(request: Request, db: Session = Depends(get_db), admin_user
                 },
                 headers={
                     "Authorization": auth_header,
-                    "X-Internal-Token": SECRET_KEY # <--- Tambahkan juga di sini
+                    "X-Internal-Token": INTERNAL_API_KEY # <--- Tambahkan juga di sini
                 },
                 timeout=1.0 # Timeout sangat singkat per request
             )

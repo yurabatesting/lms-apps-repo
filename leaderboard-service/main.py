@@ -11,6 +11,9 @@ security = HTTPBearer()
 SECRET_KEY = os.getenv("SECRET_KEY", "super_secret_key_lms")
 ALGORITHM = "HS256"
 
+# TAMBAHAN BARU: Kunci khusus untuk komunikasi antar-mikrolayanan
+INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "kunci_rahasia_internal_default")
+
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 # --- TAMBAHAN BARU: Membaca Password Redis dari Environment ---
@@ -101,3 +104,12 @@ def delete_user_from_leaderboard(username: str, current_user: dict = Depends(ver
                 deleted_count += 1
             
     return {"status": "success", "message": f"{deleted_count} rekaman Redis milik {username} dihapus."}
+
+
+# --- FUNGSI KEAMANAN BARU (SERVICE-TO-SERVICE) ---
+def verify_internal_service(x_internal_token: str = Header(None)):
+    """Validasi bahwa yang memanggil adalah sesama Microservice internal"""
+    # PERUBAHAN: Gunakan INTERNAL_API_KEY, bukan SECRET_KEY
+    if not x_internal_token or x_internal_token != INTERNAL_API_KEY:
+        raise HTTPException(status_code=403, detail="Akses Ditolak: Hanya jalur komunikasi internal yang diizinkan")
+    return True
