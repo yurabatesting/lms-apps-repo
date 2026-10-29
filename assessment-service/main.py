@@ -15,6 +15,9 @@ DATABASE_URL = os.environ["DATABASE_URL"]
 SECRET_KEY = os.environ["SECRET_KEY"]
 ALGORITHM = "HS256"
 
+# AMAN: Gunakan nilai dinamis untuk GCP/GKE, dan nilai default untuk Docker lokal
+LEADERBOARD_SERVICE_URL = os.environ.get("LEADERBOARD_SERVICE_URL", "http://leaderboard-service:8003")
+
 is_dev = os.environ.get("ENVIRONMENT") == "development"
 
 engine = create_engine(DATABASE_URL)
@@ -229,7 +232,7 @@ def submit_score(request: Request, payload: ScoreSubmitPayload, db: Session = De
             # 2. Tembak Leaderboard Service melalui DNS internal Docker
             # 3. Graceful Degradation: Timeout maksimal 2 detik agar tidak hang
             requests.post(
-                "http://leaderboard-service:8003/scores",
+                f"{LEADERBOARD_SERVICE_URL}/scores",
                 json={
                     "username": username,
                     "score": int(final_score),
@@ -321,7 +324,7 @@ def sync_leaderboard(request: Request, db: Session = Depends(get_db), admin_user
     for s in scores:
         try:
             res = requests.post(
-                "http://leaderboard-service:8003/scores",
+                f"{LEADERBOARD_SERVICE_URL}/scores",
                 json={
                     "username": s.username,
                     "score": int(s.score),

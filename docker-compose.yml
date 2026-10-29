@@ -92,6 +92,7 @@ services:
       - DATABASE_URL=${ASSESSMENT_DB_URL} 
       - SECRET_KEY=${SECRET_KEY}
       - ENVIRONMENT=${ENVIRONMENT}
+      - LEADERBOARD_SERVICE_URL=http://leaderboard-service:8003
     expose:
       - "8002"
     restart: unless-stopped
