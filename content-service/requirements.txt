@@ -5,4 +5,5 @@ psycopg2-binary==2.9.9
 pydantic==2.5.2
 python-jose[cryptography]==3.3.0
 python-dotenv==1.0.0
-python-multipart      # <--- TAMBAHAN BARU
+python-multipart      
+google-cloud-storage
