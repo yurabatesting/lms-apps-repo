@@ -5,8 +5,8 @@ FROM golang:1.26 AS builder
 
 WORKDIR /app
 
-ENV GOPROXY=https://goproxy.cn,https://goproxy.io,direct
-ENV GOSUMDB=off
+# ENV GOPROXY=https://goproxy.cn,https://goproxy.io,direct
+# ENV GOSUMDB=off
 
 # 1. Salin SEMUA file terlebih dahulu (go.mod dan main.go)
 COPY go.mod .

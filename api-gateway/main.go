@@ -1,18 +1,43 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"golang.org/x/time/rate"
+	"github.com/redis/go-redis/v9"
 )
+
+var ctx = context.Background()
+var rdb *redis.Client
+
+// ====================================================
+// INISIALISASI REDIS (Aman dari Hardcode Kredensial)
+// ====================================================
+func init() {
+	redisHost := getEnvOrDefault("REDIS_HOST", "redis")
+	redisPort := getEnvOrDefault("REDIS_PORT", "6379")
+	redisPassword := getEnvOrDefault("REDIS_PASSWORD", "")
+
+	rdb = redis.NewClient(&redis.Options{
+		Addr:     redisHost + ":" + redisPort,
+		Password: redisPassword,
+		DB:       0,
+	})
+}
+
+func getEnvOrDefault(key, fallback string) string {
+	if value, exists := os.LookupEnv(key); exists {
+		return value
+	}
+	return fallback
+}
 
 // ====================================================
 // MIDDLEWARE 1: CORS TERSENTRALISASI
@@ -20,13 +45,11 @@ import (
 func corsMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		allowedOrigin := getEnvOrDefault("ALLOWED_ORIGINS", "http://localhost")
-
 		c.Writer.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With, X-Internal-Token")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
 
-		// Jika browser melakukan Preflight Request (OPTIONS), langsung balas sukses di Gateway
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(http.StatusNoContent)
 			return
@@ -36,29 +59,25 @@ func corsMiddleware() gin.HandlerFunc {
 }
 
 // ====================================================
-// MIDDLEWARE 2: RATE LIMITER ANTI BRUTE-FORCE
+// MIDDLEWARE 2: RATE LIMITER BERBASIS REDIS (Distributed)
 // ====================================================
-// Memori untuk menyimpan catatan IP pengunjung
-var visitors = make(map[string]*rate.Limiter)
-var mu sync.Mutex
-
-func getVisitor(ip string) *rate.Limiter {
-	mu.Lock()
-	defer mu.Unlock()
-	limiter, exists := visitors[ip]
-	if !exists {
-		// ATURAN KETAT: 2 request per detik, dengan toleransi lonjakan (burst) maksimal 5 request
-		limiter = rate.NewLimiter(2, 5)
-		visitors[ip] = limiter
-	}
-	return limiter
-}
-
 func rateLimitMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		limiter := getVisitor(c.ClientIP())
-		// Jika IP ini melanggar batas kecepatan, tolak aksesnya
-		if !limiter.Allow() {
+		ip := c.ClientIP()
+		key := "rate_limit:" + ip
+
+		pipe := rdb.TxPipeline()
+		incr := pipe.Incr(ctx, key)
+		pipe.Expire(ctx, key, 1*time.Second)
+		_, err := pipe.Exec(ctx)
+
+		if err != nil {
+			log.Printf("Peringatan: Redis Rate Limiter gagal merespons: %v", err)
+			c.Next()
+			return
+		}
+
+		if incr.Val() > 5 {
 			c.JSON(http.StatusTooManyRequests, gin.H{
 				"status":  "error",
 				"message": "Terlalu banyak permintaan (Rate Limit Exceeded). Harap tunggu sejenak.",
@@ -71,7 +90,7 @@ func rateLimitMiddleware() gin.HandlerFunc {
 }
 
 // ====================================================
-// FUNGSI UTAMA & PROXY
+// FUNGSI PROXY
 // ====================================================
 func proxy(targetURL string) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -95,18 +114,13 @@ func proxy(targetURL string) gin.HandlerFunc {
 	}
 }
 
-func getEnvOrDefault(key, fallback string) string {
-	if value, exists := os.LookupEnv(key); exists {
-		return value
-	}
-	return fallback
-}
-
+// ====================================================
+// FUNGSI UTAMA
+// ====================================================
 func main() {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 
-	// 1. Pasang Logger dan Recovery bawaan
 	r.Use(gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string {
 		logFormat := map[string]interface{}{
 			"time":       param.TimeStamp.Format(time.RFC3339),
@@ -122,7 +136,6 @@ func main() {
 	}))
 	r.Use(gin.Recovery())
 
-	// 2. PASANG KEDUA MIDDLEWARE KEAMANAN BARU
 	r.Use(corsMiddleware())
 	r.Use(rateLimitMiddleware())
 
@@ -134,7 +147,7 @@ func main() {
 	r.GET("/", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"status":  "success",
-			"message": "API Gateway is running smoothly with CORS and Rate Limiting!",
+			"message": "API Gateway is running smoothly with CORS and Distributed Rate Limiting!",
 			"service": "api-gateway",
 		})
 	})
@@ -142,13 +155,12 @@ func main() {
 	r.Any("/api/auth/*path", proxy(authURL))
 	r.Any("/api/content/*path", proxy(contentURL))
 	r.Any("/api/assessment/*path", proxy(assessmentURL))
+
 	// ==========================================
 	// PENGAMANAN LEADERBOARD SERVICE
 	// ==========================================
-	// 1. Izinkan akses publik HANYA untuk metode GET (Melihat skor global)
 	r.GET("/api/leaderboard/*path", proxy(leaderboardURL))
 
-	// 2. Blokir metode modifikasi data (POST, DELETE, PUT) dari luar (Internet/Frontend)
 	blockAccess := func(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{
 			"status":  "error",
