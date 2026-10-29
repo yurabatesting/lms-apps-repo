@@ -6,8 +6,8 @@ services:
     image: postgres:15-alpine
     container_name: lms-postgres
     environment:
-      POSTGRES_USER: lms_admin
-      POSTGRES_PASSWORD: secretpassword
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       # Saat container pertama kali dibuat, ia akan mengeksekusi file di dalam docker-entrypoint-initdb.d
     ports:
       - "5432:5432" # Mapping port Macbook (kiri) ke port Container (kanan)
@@ -32,7 +32,7 @@ services:
     build: 
       context: ./auth-service # Docker akan nge-build dari folder ini
     container_name: lms-auth-service
-    ports:
+    expose:
       - "8000" # Port FastAPI
     environment:
       # Variabel untuk koneksi database
@@ -51,7 +51,7 @@ services:
     build:
       context: ./content-service
     container_name: lms-content-service
-    ports:
+    expose:
       - "8001" # Service ini jalan di port 8001 MacBook Anda
     environment:
       # Terhubung ke content_db
@@ -70,11 +70,17 @@ services:
     build:
       context: ./api-gateway
     container_name: lms-api-gateway
-    ports:
-      - "8080:8080"
+    expose:
+      - "8080"
+    environment:
+      # Injeksi kredensial Redis secara dinamis dan aman
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
     depends_on:
       - auth-service
       - content-service
+      - redis # Menambahkan ketergantungan urutan nyala pada Redis
     restart: unless-stopped
 
   # --- TAMBAHAN BARU: Assessment Service ---
