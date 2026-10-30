@@ -103,14 +103,21 @@ def create_material_for_course(
 @app.get("/download/{filename}")
 async def download_secure_file(
     filename: str, 
-    current_user: dict = Depends(get_current_user) # Memanggil fungsi yang sudah dirombak di security.py
+    current_user: dict = Depends(get_current_user) 
 ):
+    # ==========================================
+    # PERBAIKAN: Sanitasi Input (Cegah Path Traversal)
+    # Jika hacker mengirim "../../etc/passwd", os.path.basename akan memotongnya menjadi "passwd"
+    # ==========================================
+    safe_filename = os.path.basename(filename)
+
     if STORAGE_MODE == "gcs":
         from google.cloud import storage
         try:
             storage_client = storage.Client()
             bucket = storage_client.bucket(GCP_BUCKET_NAME)
-            blob = bucket.blob(f"materi/{filename}")
+            # Pastikan menggunakan safe_filename
+            blob = bucket.blob(f"materi/{safe_filename}")
             if not blob.exists():
                 raise HTTPException(status_code=404, detail="File PDF tidak ditemukan di Cloud")
                 
@@ -120,13 +127,15 @@ async def download_secure_file(
             raise HTTPException(status_code=500, detail=f"Gagal generate Signed URL: {str(e)}")
             
     else:
-        file_path = f"uploads/{filename}"
+        # Gunakan os.path.join agar penyusunan direktori lebih aman sesuai OS (Linux/Windows)
+        file_path = os.path.join(UPLOAD_DIR, safe_filename)
+        
         if not os.path.exists(file_path):
             raise HTTPException(status_code=404, detail="File PDF tidak ditemukan di server lokal")
-        # Menggunakan parameter bawaan FastAPI: content_disposition_type
+            
         return FileResponse(
             path=file_path, 
             media_type="application/pdf", 
-            filename=filename, # Kita kembalikan ini agar tab browser punya judul file yang rapi
-            content_disposition_type="inline" # <-- INI KUNCI UTAMANYA
+            filename=safe_filename, # Gunakan safe_filename
+            content_disposition_type="inline"
         )
