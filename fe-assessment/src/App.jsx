@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { useEffect, useState } from 'react';
+import DOMPurify from 'dompurify';
 
 function AssessmentHome() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -170,7 +171,7 @@ function AssessmentHome() {
               return (
                 <div key={q.id} className="bg-white p-8 rounded-xl shadow-sm border border-gray-200">
                   <h3 className="font-bold text-gray-800 mb-4 text-lg">Soal {index + 1} <span className="text-gray-500 text-sm font-normal">[{q.topic}]</span></h3>
-                  <p className="text-gray-700 mb-6 text-lg" dangerouslySetInnerHTML={{ __html: q.question }} />
+                  <p className="text-gray-700 mb-6 text-lg" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(q.question) }} />
                   <div className="space-y-3">
                     {options.map((opt, i) => (
                       <label key={i} className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 cursor-pointer transition border border-transparent hover:border-gray-200">
@@ -228,7 +229,7 @@ function AssessmentHome() {
               return (
                 <div key={item.question_id} className="bg-white p-8 rounded-xl shadow-sm border border-gray-200">
                   <p className="text-gray-800 text-lg mb-4">
-                    <span className="font-bold">Soal {index + 1}:</span> <span dangerouslySetInnerHTML={{ __html: item.question }} />
+                    <span className="font-bold">Soal {index + 1}:</span> <span dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(item.question) }} />
                   </p>
                   <div className={`p-4 rounded-lg mb-3 font-medium ${isCorrect ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
                     Jawaban Anda: {userAnswer || "(Tidak dijawab)"} {isCorrect ? ' (Benar ✔️)' : ' (Salah ❌)'}
