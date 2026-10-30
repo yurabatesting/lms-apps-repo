@@ -9,13 +9,10 @@ from sqlalchemy import create_engine, Column, Integer, String, Text, JSON, Forei
 from sqlalchemy.orm import declarative_base, sessionmaker, Session, relationship
 from datetime import datetime
 
-# --- 1. FAIL-FAST ENVIRONMENT VARIABLES ---
-# Menggunakan os.environ agar aplikasi langsung crash jika variabel ini tidak ada di .env
 DATABASE_URL = os.environ["DATABASE_URL"]
 SECRET_KEY = os.environ["SECRET_KEY"]
 ALGORITHM = "HS256"
 
-# AMAN: Gunakan nilai dinamis untuk GCP/GKE, dan nilai default untuk Docker lokal
 LEADERBOARD_SERVICE_URL = os.environ.get("LEADERBOARD_SERVICE_URL", "http://leaderboard-service:8003")
 INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "kunci_rahasia_internal_default")
 
@@ -29,9 +26,8 @@ class QuizSetDB(Base):
     __tablename__ = "quiz_sets"
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, index=True)
-    course_id = Column(Integer, nullable=True) # <--- TAMBAHAN BARU
+    course_id = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
-    
     questions = relationship("QuestionDB", back_populates="quiz_set", cascade="all, delete-orphan")
 
 class QuestionDB(Base):
@@ -45,7 +41,6 @@ class QuestionDB(Base):
     options = Column(JSON)
     answer = Column(String)
     explanation = Column(Text)
-
     quiz_set = relationship("QuizSetDB", back_populates="questions")
 
 class ScoreDB(Base):
@@ -58,20 +53,10 @@ class ScoreDB(Base):
     total_questions = Column(Integer)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-# --- 2. SABUK PENGAMAN DATABASE ---
 if is_dev:
-    print("⚙️ Mode DEVELOPMENT: Membuat tabel database otomatis...", flush=True)
     Base.metadata.create_all(bind=engine)
-else:
-    print("🛡️ Mode PRODUCTION: Eksekusi create_all dilewati.", flush=True)
 
-# --- 3. SABUK PENGAMAN SWAGGER UI ---
-app = FastAPI(
-    title="Assessment Service",
-    docs_url="/docs" if is_dev else None,
-    redoc_url="/redoc" if is_dev else None
-)
-
+app = FastAPI(title="Assessment Service", docs_url="/docs" if is_dev else None, redoc_url="/redoc" if is_dev else None)
 security = HTTPBearer()
 
 class QuestionTemplate(BaseModel):
@@ -85,12 +70,12 @@ class QuestionTemplate(BaseModel):
 
 class QuizUploadPayload(BaseModel):
     title: str
-    course_id: int # <--- TAMBAHAN BARU
+    course_id: int 
     questions: List[QuestionTemplate]
 
 class ScoreSubmitPayload(BaseModel):
     quiz_set_id: int
-    answers: Dict[str, str]  # Format: {"id_soal": "jawaban_user", "1": "Jakarta"}
+    answers: Dict[str, str]
 
 def get_db():
     db = SessionLocal()
@@ -104,10 +89,8 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
         token = credentials.credentials
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         return payload
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token kadaluarsa")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Token tidak valid")
+    except Exception:
+        raise HTTPException(status_code=401, detail="Token kadaluarsa atau tidak valid")
 
 def verify_admin(current_user: dict = Depends(verify_token)):
     if current_user.get("role") != "admin":
@@ -120,7 +103,6 @@ def health_check():
 
 @app.post("/questions")
 def upload_questions(payload: QuizUploadPayload, db: Session = Depends(get_db), current_user: dict = Depends(verify_admin)):
-    # Simpan course_id ke database
     new_quiz_set = QuizSetDB(title=payload.title, course_id=payload.course_id)
     db.add(new_quiz_set)
     db.commit()
@@ -128,23 +110,13 @@ def upload_questions(payload: QuizUploadPayload, db: Session = Depends(get_db), 
 
     added_count = 0
     for q in payload.questions:
-        new_q = QuestionDB(
-            quiz_set_id=new_quiz_set.id,
-            no_soal=q.id, 
-            topic=q.topic,
-            kategori=q.kategori,
-            question=q.question,
-            options=q.options,
-            answer=q.answer,
-            explanation=q.explanation
-        )
+        new_q = QuestionDB(quiz_set_id=new_quiz_set.id, no_soal=q.id, topic=q.topic, kategori=q.kategori, question=q.question, options=q.options, answer=q.answer, explanation=q.explanation)
         db.add(new_q)
         added_count += 1
             
     db.commit()
     return {"status": "success", "message": f"{added_count} soal berhasil disimpan dalam bundel '{payload.title}'"}
 
-# --- ENDPOINT GET DIPERBARUI UNTUK MENERIMA FILTER course_id ---
 @app.get("/questions")
 def get_all_questions(course_id: Optional[int] = None, db: Session = Depends(get_db), current_user: dict = Depends(verify_token)):
     query = db.query(QuizSetDB)
@@ -155,40 +127,23 @@ def get_all_questions(course_id: Optional[int] = None, db: Session = Depends(get
     result = []
     
     for qs in quiz_sets:
-        # FILTERING: Buat daftar soal baru tanpa kolom answer & explanation
         safe_questions = []
         for q in qs.questions:
-            safe_questions.append({
-                "id": q.id,
-                "no_soal": q.no_soal,
-                "topic": q.topic,
-                "kategori": q.kategori,
-                "question": q.question,
-                "options": q.options
-                # PERHATIKAN: 'answer' dan 'explanation' tidak dimasukkan ke sini!
-            })
-
-        result.append({
-            "id": qs.id,
-            "title": qs.title,
-            "course_id": qs.course_id,
-            "questions": safe_questions
-        })
+            safe_questions.append({"id": q.id, "no_soal": q.no_soal, "topic": q.topic, "kategori": q.kategori, "question": q.question, "options": q.options})
+        result.append({"id": qs.id, "title": qs.title, "course_id": qs.course_id, "questions": safe_questions})
         
     return {"status": "success", "data": result}
 
 @app.post("/scores")
 def submit_score(request: Request, payload: ScoreSubmitPayload, db: Session = Depends(get_db), current_user: dict = Depends(verify_token)):
     username = current_user.get("sub", "Anonymous")
-    
+    role = current_user.get("role", "siswa") 
+
     quiz_set = db.query(QuizSetDB).filter(QuizSetDB.id == payload.quiz_set_id).first()
     if not quiz_set:
         raise HTTPException(status_code=404, detail="Kuis tidak ditemukan")
         
     questions = db.query(QuestionDB).filter(QuestionDB.quiz_set_id == payload.quiz_set_id).all()
-    if not questions:
-        raise HTTPException(status_code=400, detail="Kuis belum memiliki soal untuk dinilai")
-
     total_questions = len(questions)
     correct_count = 0
     review_data = [] 
@@ -196,70 +151,36 @@ def submit_score(request: Request, payload: ScoreSubmitPayload, db: Session = De
     for q in questions:
         user_answer = payload.answers.get(str(q.id))
         is_correct = (user_answer == q.answer)
-        
-        if is_correct:
-            correct_count += 1
-            
-        review_data.append({
-            "question_id": q.id,
-            "question": q.question,
-            "user_answer": user_answer,
-            "correct_answer": q.answer,
-            "is_correct": is_correct,
-            "explanation": q.explanation
-        })
+        if is_correct: correct_count += 1
+        review_data.append({"question_id": q.id, "question": q.question, "user_answer": user_answer, "correct_answer": q.answer, "is_correct": is_correct, "explanation": q.explanation})
             
     final_score = (correct_count / total_questions) * 100.0
+
+    if role == "admin":
+        return {
+            "status": "success", 
+            "message": "Uji Coba Selesai! (Mode Admin: Nilai tidak dimasukkan ke dalam sistem)",
+            "data": {"quiz_title": quiz_set.title, "score": final_score, "correct_count": correct_count, "total_questions": total_questions, "review": review_data}
+        }
     
-    new_score = ScoreDB(
-        username=username, 
-        quiz_title=quiz_set.title, 
-        score=final_score, 
-        correct_count=correct_count, 
-        total_questions=total_questions
-    )
+    new_score = ScoreDB(username=username, quiz_title=quiz_set.title, score=final_score, correct_count=correct_count, total_questions=total_questions)
     db.add(new_score)
     db.commit()
     db.refresh(new_score)
 
-    # =================================================================
-    # SERVER-TO-SERVER COMMUNICATION (Mencegah Dual-Write di Frontend)
-    # =================================================================
-    # 1. Tangkap token JWT mentah dari request header
     auth_header = request.headers.get("Authorization")
-    
     if auth_header:
         try:
-            # 2. Tembak Leaderboard Service melalui DNS internal Docker
-            # 3. Graceful Degradation: Timeout maksimal 2 detik agar tidak hang
             requests.post(
                 f"{LEADERBOARD_SERVICE_URL}/scores",
-                json={
-                    "username": username,
-                    "score": int(final_score),
-                    "quiz_title": quiz_set.title
-                },
-                headers={
-                    "Authorization": auth_header, 
-                    "X-Internal-Token": INTERNAL_API_KEY  # <--- Menggunakan Variabel Env yang sudah ada
-                },
+                json={"username": username, "score": int(final_score), "quiz_title": quiz_set.title},
+                headers={"Authorization": auth_header, "X-Internal-Token": INTERNAL_API_KEY},
                 timeout=2.0
             )
-        except requests.exceptions.RequestException as e:
-            # Jika Redis/Leaderboard mati, catat log tapi JANGAN gagalkan ujian user!
-            print(f"🚨 ALERT: Leaderboard Service tidak dapat dihubungi! ({e})", flush=True)
+        except requests.exceptions.RequestException:
+            pass
 
-    return {
-        "status": "success", 
-        "message": "Ujian selesai diperiksa!",
-        "data": {
-            "quiz_title": quiz_set.title,
-            "score": final_score,
-            "correct_count": correct_count,
-            "total_questions": total_questions,
-            "review": review_data
-        }
-    }
+    return {"status": "success", "message": "Ujian selesai diperiksa!", "data": {"quiz_title": quiz_set.title, "score": final_score, "correct_count": correct_count, "total_questions": total_questions, "review": review_data}}
 
 @app.get("/scores")
 def get_leaderboard(db: Session = Depends(get_db)):
@@ -278,47 +199,39 @@ def get_my_score_history(db: Session = Depends(get_db), current_user: dict = Dep
 def delete_user_scores(username: str, db: Session = Depends(get_db), current_user: dict = Depends(verify_admin)):
     deleted_count = db.query(ScoreDB).filter(ScoreDB.username == username).delete()
     db.commit()
-    return {"status": "success", "message": f"{deleted_count} riwayat nilai milik {username} telah dihapus"}
+    return {"status": "success", "message": f"{deleted_count} riwayat dihapus"}
 
-# --- ENDPOINT BARU: Path Parameter anti-potong API Gateway ---
 @app.get("/questions/course/{course_id}")
 def get_questions_by_course(course_id: int, db: Session = Depends(get_db), current_user: dict = Depends(verify_token)):
     quiz_sets = db.query(QuizSetDB).filter(QuizSetDB.course_id == course_id).all()
-
     result = []
     for qs in quiz_sets:
-        # FILTERING: Buat daftar soal baru tanpa kolom answer & explanation
         safe_questions = []
         for q in qs.questions:
-            safe_questions.append({
-                "id": q.id,
-                "no_soal": q.no_soal,
-                "topic": q.topic,
-                "kategori": q.kategori,
-                "question": q.question,
-                "options": q.options
-            })
-
-        result.append({
-            "id": qs.id,
-            "title": qs.title,
-            "course_id": qs.course_id,
-            "questions": safe_questions
-        })
-
+            safe_questions.append({"id": q.id, "no_soal": q.no_soal, "topic": q.topic, "kategori": q.kategori, "question": q.question, "options": q.options})
+        result.append({"id": qs.id, "title": qs.title, "course_id": qs.course_id, "questions": safe_questions})
     return {"status": "success", "data": result}
 
-# --- ENDPOINT BARU: ALAT SINKRONISASI ADMIN (OPSI 1) ---
 @app.post("/sync-leaderboard")
 def sync_leaderboard(request: Request, db: Session = Depends(get_db), admin_user: dict = Depends(verify_admin)):
-    """
-    Endpoint pemulihan: Mengambil semua data dari PostgreSQL 
-    dan menyuntikkannya kembali ke Redis (Leaderboard Service).
-    Hanya bisa diakses oleh Admin.
-    """
-    scores = db.query(ScoreDB).all()
+    # PERBAIKAN: Pembersihan Otomatis ditambahkan ke skrip ini
+    admin_username = admin_user.get("sub", "admin")
+    
+    db.query(ScoreDB).filter(ScoreDB.username == admin_username).delete()
+    db.commit()
+    
     auth_header = request.headers.get("Authorization")
     
+    try:
+        requests.delete(
+            f"{LEADERBOARD_SERVICE_URL}/scores/user/{admin_username}",
+            headers={"Authorization": auth_header},
+            timeout=2.0
+        )
+    except:
+        pass
+
+    scores = db.query(ScoreDB).all()
     success_count = 0
     failed_count = 0
     
@@ -326,16 +239,9 @@ def sync_leaderboard(request: Request, db: Session = Depends(get_db), admin_user
         try:
             res = requests.post(
                 f"{LEADERBOARD_SERVICE_URL}/scores",
-                json={
-                    "username": s.username,
-                    "score": int(s.score),
-                    "quiz_title": s.quiz_title
-                },
-                headers={
-                    "Authorization": auth_header,
-                    "X-Internal-Token": INTERNAL_API_KEY # <--- Tambahkan juga di sini
-                },
-                timeout=1.0 # Timeout sangat singkat per request
+                json={"username": s.username, "score": int(s.score), "quiz_title": s.quiz_title},
+                headers={"Authorization": auth_header, "X-Internal-Token": INTERNAL_API_KEY},
+                timeout=1.0 
             )
             if res.status_code == 200:
                 success_count += 1
@@ -346,7 +252,7 @@ def sync_leaderboard(request: Request, db: Session = Depends(get_db), admin_user
             
     return {
         "status": "success",
-        "message": "Operasi sinkronisasi selesai",
+        "message": "Operasi sinkronisasi dan pembersihan selesai",
         "data": {
             "total_data_postgres": len(scores),
             "berhasil_dikirim": success_count,

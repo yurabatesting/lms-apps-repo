@@ -10,27 +10,20 @@ security = HTTPBearer()
 
 SECRET_KEY = os.getenv("SECRET_KEY", "super_secret_key_lms")
 ALGORITHM = "HS256"
-
-# TAMBAHAN BARU: Kunci khusus untuk komunikasi antar-mikrolayanan
 INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "kunci_rahasia_internal_default")
 
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
-# --- TAMBAHAN BARU: Membaca Password Redis dari Environment ---
-# Nilai default adalah None, sehingga aman untuk development lokal
 raw_password = os.getenv("REDIS_PASSWORD")
-# Cek jika string kosong/spasi, paksa ubah menjadi None
 REDIS_PASSWORD = raw_password if raw_password and raw_password.strip() else None
 
-# Inisialisasi koneksi Redis dengan injeksi password dinamis
 r = redis.Redis(
     host=REDIS_HOST, 
     port=REDIS_PORT, 
-    password=REDIS_PASSWORD, # Akan menggunakan AUTH jika diisi (GCP), atau diabaikan jika None (Lokal)
+    password=REDIS_PASSWORD,
     decode_responses=True
 )
 
-# TAMBAHAN: Menerima parameter quiz_title
 class ScoreData(BaseModel):
     username: str
     score: int
@@ -44,13 +37,12 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     except Exception:
         raise HTTPException(status_code=401, detail="Akses ditolak: Token tidak valid")
 
-# --- FUNGSI KEAMANAN BARU (SERVICE-TO-SERVICE) ---
 def verify_internal_service(x_internal_token: str = Header(None)):
     """Validasi bahwa yang memanggil adalah sesama Microservice internal"""
-    if not x_internal_token or x_internal_token != SECRET_KEY:
+    # PERBAIKAN: Fungsi duplikat dan blokir 'not' telah dihapus
+    if x_internal_token != INTERNAL_API_KEY:
         raise HTTPException(status_code=403, detail="Akses Ditolak: Hanya jalur komunikasi internal yang diizinkan")
     return True
-# -------------------------------------------------
 
 @app.get("/")
 def health_check():
@@ -79,12 +71,15 @@ def get_top_scores(limit: int = 20, quiz_title: str = None):
 def submit_score(data: ScoreData, is_internal: bool = Depends(verify_internal_service)):
     member_id = f"{data.username}::{data.quiz_title}"
     
-    # 1. Simpan ke Global Leaderboard (Hanya jika skor baru LEBIH BESAR dari skor lama)
-    r.zadd("leaderboard", mapping={member_id: data.score}, gt=True)
-    
-    # 2. Simpan ke Quiz-Specific Leaderboard (Hanya jika skor baru LEBIH BESAR dari skor lama)
+    # PERBAIKAN: Logika manual yang 100% kompatibel menjamin nilai siswa baru pasti masuk
+    current_global = r.zscore("leaderboard", member_id)
+    if current_global is None or data.score > float(current_global):
+        r.zadd("leaderboard", mapping={member_id: data.score})
+        
     specific_key = f"leaderboard:{data.quiz_title}"
-    r.zadd(specific_key, mapping={member_id: data.score}, gt=True)
+    current_specific = r.zscore(specific_key, member_id)
+    if current_specific is None or data.score > float(current_specific):
+        r.zadd(specific_key, mapping={member_id: data.score})
     
     return {"status": "success", "message": "Skor live diproses secara internal!"}
 
@@ -94,22 +89,11 @@ def delete_user_from_leaderboard(username: str, current_user: dict = Depends(ver
         raise HTTPException(status_code=403, detail="Hanya Admin yang dapat menghapus data leaderboard")
 
     deleted_count = 0
-    # Karena keyspace sekarang dinamis, kita harus menyapu (scan) semua key berawalan "leaderboard"
     for key in r.scan_iter("leaderboard*"):
         members = r.zrange(key, 0, -1)
         for member in members:
-            # Hapus jejak user di keranjang global maupun spesifik
             if member.startswith(f"{username}::"):
                 r.zrem(key, member)
                 deleted_count += 1
             
-    return {"status": "success", "message": f"{deleted_count} rekaman Redis milik {username} dihapus."}
-
-
-# --- FUNGSI KEAMANAN BARU (SERVICE-TO-SERVICE) ---
-def verify_internal_service(x_internal_token: str = Header(None)):
-    """Validasi bahwa yang memanggil adalah sesama Microservice internal"""
-    # PERUBAHAN: Gunakan INTERNAL_API_KEY, bukan SECRET_KEY
-    if not x_internal_token or x_internal_token != INTERNAL_API_KEY:
-        raise HTTPException(status_code=403, detail="Akses Ditolak: Hanya jalur komunikasi internal yang diizinkan")
-    return True
+    return {"status": "success", "message": f"{deleted_count} rekaman Redis dihapus."}
