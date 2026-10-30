@@ -121,6 +121,15 @@ func main() {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 
+	// --- PERBAIKAN: Percayai Reverse Proxy Internal ---
+	// Mendaftarkan rentang IP privat standar (Docker & Kubernetes/GKE)
+	// agar Gin mau membaca IP klien asli dari header X-Real-IP / X-Forwarded-For
+	err := r.SetTrustedProxies([]string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"})
+	if err != nil {
+		log.Printf("Gagal mengatur trusted proxies: %v", err)
+	}
+	// --------------------------------------------------
+
 	r.Use(gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string {
 		logFormat := map[string]interface{}{
 			"time":       param.TimeStamp.Format(time.RFC3339),
